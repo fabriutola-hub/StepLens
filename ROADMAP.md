@@ -11,7 +11,7 @@ Feedback and contributions are welcome (see [`CONTRIBUTING.md`](CONTRIBUTING.md)
 - Timeline, graph, inspector, and step-by-step replay.
 - USD-decimal cost estimates, export, tests/CI, OSS scaffolding.
 
-## ✅ 0.2 — Developer experience (this release)
+## ✅ 0.2 — Developer experience
 
 - **Simple SDK API** — `@agent-replay/sdk/simple`: `createReplay`, `record`,
   `run.step` / `run.tool` / `run.model`.
@@ -22,12 +22,19 @@ Feedback and contributions are welcome (see [`CONTRIBUTING.md`](CONTRIBUTING.md)
 - **Docs & distribution** — comparison page, screenshots, and a `Dockerfile`
   for running Studio standalone.
 
-## 0.3 — Integrations
+## ✅ 0.3 — Integrations (this release)
 
-- Vercel AI SDK integration.
-- LangChain / LangGraph callback handler.
-- Anthropic + Google client wrappers (structural, no hard deps).
-- Auto-capture of streaming responses and token usage.
+- **Vercel AI SDK** — `wrapAISDK({ generateText, streamText, … })` with
+  multi-step + tool-call capture.
+- **LangChain / LangGraph** — `createLangChainCallbackHandler()` mapping
+  chains/tools/retrievers/LLMs to spans, tool calls, and model calls.
+- **Anthropic + Google wrappers** — `wrapAnthropic`, `wrapGoogleGenAI`
+  (structural types, no hard deps).
+- **Streaming capture** — OpenAI `stream: true`, Anthropic `finalMessage()`,
+  Gemini `generateContentStream`; recorded on completion, never auto-drained.
+- **Optional model-call timestamps** — `startedAt` / `endedAt` / `durationMs`
+  on `recordModelCall` (backward compatible).
+- **More templates** — `agent-replay new vercel-ai|anthropic|google|langchain`.
 
 ## 0.4 — Packaging & distribution
 

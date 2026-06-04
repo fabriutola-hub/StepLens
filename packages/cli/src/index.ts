@@ -9,7 +9,7 @@ const program = new Command();
 program
   .name("agent-replay")
   .description("Local-first trace inspector for AI agents — record, list, and visualize traces in Studio")
-  .version("0.2.0");
+  .version("0.3.0");
 
 // ── dev ─────────────────────────────────────────────────────────────────────
 program
@@ -232,8 +232,44 @@ program
   });
 
 // ── new ─────────────────────────────────────────────────────────────────────
-const TEMPLATES = ["simple", "error", "openai", "ollama"] as const;
+const TEMPLATES = [
+  "simple",
+  "error",
+  "openai",
+  "ollama",
+  "vercel-ai",
+  "anthropic",
+  "google",
+  "langchain",
+] as const;
 type TemplateName = (typeof TEMPLATES)[number];
+
+/** Templates that call a real (paid) API: what to install and which key to set. */
+const TEMPLATE_REQUIREMENTS: Partial<
+  Record<TemplateName, { api: string; env: string; install: string }>
+> = {
+  openai: { api: "OpenAI", env: "OPENAI_API_KEY", install: "npm i openai" },
+  "vercel-ai": {
+    api: "OpenAI (via the Vercel AI SDK)",
+    env: "OPENAI_API_KEY",
+    install: "npm i ai @ai-sdk/openai",
+  },
+  anthropic: {
+    api: "Anthropic",
+    env: "ANTHROPIC_API_KEY",
+    install: "npm i @anthropic-ai/sdk",
+  },
+  google: {
+    api: "Google Gemini",
+    env: "GEMINI_API_KEY",
+    install: "npm i @google/genai",
+  },
+  langchain: {
+    api: "OpenAI (via LangChain)",
+    env: "OPENAI_API_KEY",
+    install: "npm i @langchain/openai @langchain/core",
+  },
+};
 
 program
   .command("new")
@@ -274,9 +310,10 @@ program
     writeFileSync(outPath, content, "utf-8");
 
     console.log(`Created ${outPath}`);
-    if (template === "openai") {
-      console.log("\n⚠  This example calls the real OpenAI API and may cost money.");
-      console.log("   Set OPENAI_API_KEY and run `npm i openai` before running it.");
+    const requirements = TEMPLATE_REQUIREMENTS[template as TemplateName];
+    if (requirements) {
+      console.log(`\n⚠  This example calls the real ${requirements.api} API and may cost money.`);
+      console.log(`   Set ${requirements.env} and run \`${requirements.install}\` before running it.`);
     }
     console.log("\nNext steps:");
     console.log("  1. Start Studio:    pnpm dev    (or: agent-replay dev)");

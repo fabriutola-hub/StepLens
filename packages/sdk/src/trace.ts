@@ -129,6 +129,12 @@ export class Trace {
     inputTokens?: number;
     outputTokens?: number;
     spanId?: string;
+    /** When the call started (epoch ms). Defaults to now. */
+    startedAt?: number;
+    /** When the call ended (epoch ms). */
+    endedAt?: number;
+    /** Duration in ms. Derived from `startedAt`/`endedAt` when omitted. */
+    durationMs?: number;
     metadata?: Record<string, unknown>;
   }): ModelCall {
     const totalTokens =
@@ -140,6 +146,7 @@ export class Trace {
       options.outputTokens ?? 0,
     );
 
+    const startedAt = options.startedAt ?? Date.now();
     const call: ModelCall = {
       id: randomUUID(),
       traceId: this.id,
@@ -153,7 +160,10 @@ export class Trace {
       outputTokens: options.outputTokens,
       totalTokens: totalTokens > 0 ? totalTokens : undefined,
       estimatedCostUsd,
-      startedAt: Date.now(),
+      startedAt,
+      endedAt: options.endedAt,
+      durationMs:
+        options.durationMs ?? calculateDuration(startedAt, options.endedAt),
       metadata: options.metadata,
     };
     this._collector.onModelCall(call);

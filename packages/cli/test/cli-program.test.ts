@@ -47,10 +47,10 @@ describe("agent-replay CLI", () => {
     }
   });
 
-  it("--version prints 0.2.0", async () => {
+  it("--version prints 0.3.0", async () => {
     const { code, stdout } = await runCli(["--version"]);
     expect(code).toBe(0);
-    expect(stdout.trim()).toBe("0.2.0");
+    expect(stdout.trim()).toBe("0.3.0");
   });
 
   it("doctor runs and reports a system check", async () => {
@@ -168,7 +168,16 @@ describe("agent-replay new", () => {
   });
 
   it("generates runnable templates with valid commands and the endpoint", async () => {
-    for (const template of ["simple", "error", "openai", "ollama"]) {
+    for (const template of [
+      "simple",
+      "error",
+      "openai",
+      "ollama",
+      "vercel-ai",
+      "anthropic",
+      "google",
+      "langchain",
+    ]) {
       const dir = mkdtempSync(join(tmpdir(), `agent-replay-${template}-`));
       try {
         const { code } = await runCli(
@@ -192,6 +201,86 @@ describe("agent-replay new", () => {
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }
+    }
+  });
+
+  // Each integration template: required package, expected API key, correct
+  // SDK import, and a clear real-cost warning in the generated file.
+  const INTEGRATION_TEMPLATES: Array<{
+    template: string;
+    pkg: string;
+    env: string;
+    sdkImport: string;
+    wrapper: string;
+  }> = [
+    {
+      template: "vercel-ai",
+      pkg: "npm i ai @ai-sdk/openai",
+      env: "OPENAI_API_KEY",
+      sdkImport: "@agent-replay/sdk/integrations/vercel-ai",
+      wrapper: "wrapAISDK",
+    },
+    {
+      template: "anthropic",
+      pkg: "npm i @anthropic-ai/sdk",
+      env: "ANTHROPIC_API_KEY",
+      sdkImport: "@agent-replay/sdk/integrations/anthropic",
+      wrapper: "wrapAnthropic",
+    },
+    {
+      template: "google",
+      pkg: "npm i @google/genai",
+      env: "GEMINI_API_KEY",
+      sdkImport: "@agent-replay/sdk/integrations/google",
+      wrapper: "wrapGoogleGenAI",
+    },
+    {
+      template: "langchain",
+      pkg: "npm i @langchain/openai @langchain/core",
+      env: "OPENAI_API_KEY",
+      sdkImport: "@agent-replay/sdk/integrations/langchain",
+      wrapper: "createLangChainCallbackHandler",
+    },
+  ];
+
+  for (const { template, pkg, env, sdkImport, wrapper } of INTEGRATION_TEMPLATES) {
+    it(`${template} template documents its package, API key, and real cost`, async () => {
+      const dir = mkdtempSync(join(tmpdir(), `agent-replay-${template}-`));
+      try {
+        const { code, stdout } = await runCli(["new", template, "--out", "ex.mjs"], {
+          cwd: dir,
+        });
+        expect(code).toBe(0);
+        // The command itself warns about real API cost.
+        expect(stdout).toContain("may cost money");
+        expect(stdout).toContain(env);
+
+        const content = readFileSync(join(dir, "ex.mjs"), "utf-8");
+        expect(content).toContain(pkg);
+        expect(content).toContain(env);
+        expect(content).toContain(sdkImport);
+        expect(content).toContain(wrapper);
+        expect(content).toContain("may cost money");
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+  }
+
+  it("does not overwrite new integration templates without --force", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "agent-replay-new-int-"));
+    try {
+      await runCli(["new", "anthropic"], { cwd: dir });
+      const again = await runCli(["new", "google"], { cwd: dir });
+      expect(again.code).toBe(1);
+      expect(again.stderr).toContain("already exists");
+
+      const forced = await runCli(["new", "google", "--force"], { cwd: dir });
+      expect(forced.code).toBe(0);
+      const content = readFileSync(join(dir, "agent-replay-example.mjs"), "utf-8");
+      expect(content).toContain("wrapGoogleGenAI");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 });

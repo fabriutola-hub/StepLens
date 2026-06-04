@@ -67,10 +67,21 @@ Generate a ready-to-run example with `agent-replay new simple` (see
 
 ## Integrations
 
+All integrations share the same contract:
+
+- **Structural types only** — `openai`, `ai`, `@anthropic-ai/sdk`,
+  `@google/genai`, and `@langchain/*` are **not** dependencies of the SDK. You
+  pass in your real client/functions.
+- Calls made **outside** a `record()` run pass through untouched — nothing is
+  recorded, nothing breaks.
+- **Streams are recorded when you finish consuming them** — never at start, and
+  the SDK never drains a stream on your behalf. Abandon a stream and nothing is
+  recorded.
+
 ### OpenAI — `@agent-replay/sdk/integrations/openai`
 
 Wrap an OpenAI client so calls made **inside** a `record()` run are recorded
-automatically. No dependency on the `openai` package (structural types).
+automatically.
 
 ```ts
 import { createReplay } from "@agent-replay/sdk/simple";
@@ -89,12 +100,141 @@ await replay.record("OpenAI Agent", async () => {
 await replay.shutdown();
 ```
 
-Supports `chat.completions.create` and `responses.create`. Calls made **outside**
-a `record()` run pass through untouched (nothing is recorded). Generate an
-example with `agent-replay new openai`.
+Supports `chat.completions.create` and `responses.create`, including
+`{ stream: true }` on both: you get the stream back untouched, and the model
+call (accumulated text + usage, when the API sends it) is recorded once you
+consume the stream to completion. Pass
+`stream_options: { include_usage: true }` to chat completions to get token
+usage on streams. Generate an example with `agent-replay new openai`.
 
 > Ollama doesn't need a wrapper — use `run.model("ollama:...", ...)` directly
 > (try `agent-replay new ollama`).
+
+### Vercel AI SDK — `@agent-replay/sdk/integrations/vercel-ai`
+
+Wrap the AI SDK core functions you use (`generateText`, `streamText`, and
+optionally `generateObject` / `streamObject`):
+
+```ts
+import { createReplay } from "@agent-replay/sdk/simple";
+import { wrapAISDK } from "@agent-replay/sdk/integrations/vercel-ai";
+import { generateText, streamText } from "ai";
+import { openai } from "@ai-sdk/openai";
+
+const replay = createReplay();
+const ai = wrapAISDK({ generateText, streamText }, { replay });
+
+await replay.record("AI SDK Agent", async () => {
+  const { text } = await ai.generateText({
+    model: openai("gpt-4o-mini"),
+    prompt: "Hello",
+  });
+});
+await replay.shutdown();
+```
+
+- `generateText` / `generateObject` record when the result resolves.
+- `streamText` / `streamObject` record via `onFinish` / `onError` — your own
+  callbacks are preserved and still called.
+- Multi-step calls record one model call per step (via `onStepFinish` /
+  `steps`), plus each step's tool calls (with matched results).
+- The model can be a gateway string (`"openai/gpt-4o-mini"`) or a language
+  model object (`openai("gpt-4o-mini")`) — provider and model id are extracted
+  either way.
+
+Generate an example with `agent-replay new vercel-ai`.
+
+### Anthropic — `@agent-replay/sdk/integrations/anthropic`
+
+```ts
+import { createReplay } from "@agent-replay/sdk/simple";
+import { wrapAnthropic } from "@agent-replay/sdk/integrations/anthropic";
+import Anthropic from "@anthropic-ai/sdk";
+
+const replay = createReplay();
+const anthropic = wrapAnthropic(new Anthropic(), { replay });
+
+await replay.record("Anthropic Agent", async () => {
+  await anthropic.messages.create({
+    model: "claude-3-5-haiku-20241022",
+    max_tokens: 256,
+    messages: [{ role: "user", content: "Hello" }],
+  });
+
+  // Streaming: recorded when you await finalMessage().
+  const stream = anthropic.messages.stream({ /* ... */ });
+  await stream.finalMessage();
+});
+await replay.shutdown();
+```
+
+Records `usage.input_tokens` / `usage.output_tokens`, the text content, and
+metadata (`stop_reason`, message `id`, cache tokens when present). Streaming
+via `messages.stream(...)` is recorded **only** when you call/await
+`finalMessage()`; iterating raw events yourself records nothing. Generate an
+example with `agent-replay new anthropic`.
+
+### Google Gemini — `@agent-replay/sdk/integrations/google`
+
+```ts
+import { createReplay } from "@agent-replay/sdk/simple";
+import { wrapGoogleGenAI } from "@agent-replay/sdk/integrations/google";
+import { GoogleGenAI } from "@google/genai";
+
+const replay = createReplay();
+const ai = wrapGoogleGenAI(new GoogleGenAI({}), { replay });
+
+await replay.record("Gemini Agent", async () => {
+  await ai.models.generateContent({
+    model: "gemini-2.0-flash",
+    contents: "Hello",
+  });
+
+  // Streaming: a transparent async iterable; recorded when fully consumed.
+  const stream = await ai.models.generateContentStream({ /* ... */ });
+  for await (const chunk of stream) process.stdout.write(chunk.text ?? "");
+});
+await replay.shutdown();
+```
+
+Records `usageMetadata` (`promptTokenCount` / `candidatesTokenCount` as
+input/output tokens, `totalTokenCount` in metadata) plus `modelVersion` and
+`responseId`. For streams, text accumulates per chunk and the last
+`usageMetadata` wins. Generate an example with `agent-replay new google`.
+
+### LangChain / LangGraph — `@agent-replay/sdk/integrations/langchain`
+
+A callback handler instead of a wrapper — pass it via `callbacks`:
+
+```ts
+import { createReplay } from "@agent-replay/sdk/simple";
+import { createLangChainCallbackHandler } from "@agent-replay/sdk/integrations/langchain";
+
+const replay = createReplay();
+const handler = createLangChainCallbackHandler();
+
+await replay.record("LangChain Agent", async () => {
+  await chain.invoke({ question: "..." }, { callbacks: [handler] });
+});
+await replay.shutdown();
+```
+
+Mapping: chains/agents → spans (`agent` for root runs, `custom` nested),
+retrievers → `retrieval` spans, tools → spans + tool calls, LLM/chat models →
+spans + model calls. The `runId` / `parentRunId` hierarchy is preserved,
+`handle*Error` callbacks record failures, and tokens are read from
+`llmOutput.tokenUsage`, `usage_metadata`, `response_metadata.tokenUsage`, or
+equivalents when present.
+
+It can also open a trace by itself (no `record()` needed) around the first
+root run:
+
+```ts
+const handler = createLangChainCallbackHandler({ replay, traceName: "My Chain" });
+await chain.invoke({ question: "..." }, { callbacks: [handler] });
+```
+
+Generate an example with `agent-replay new langchain`.
 
 ## Core API — `createClient(options?)`
 
@@ -175,8 +315,11 @@ trace.end(output);   // or trace.fail(error)
 
 - `trace.startSpan(name, { kind, parentId, attributes })` → `Span`
   (`span.end()`, `span.fail(err)`, `span.startChildSpan(...)`).
-- `trace.recordModelCall({ provider, model, messages|prompt, response, inputTokens, outputTokens, spanId })`
-  — cost is **estimated server-side** from the model + tokens.
+- `trace.recordModelCall({ provider, model, messages|prompt, response, inputTokens, outputTokens, spanId, startedAt?, endedAt?, durationMs? })`
+  — cost is **estimated server-side** from the model + tokens. The timestamp
+  fields are optional (added in `0.3.0`, backward compatible): `startedAt`
+  defaults to now, and `durationMs` is derived from `startedAt`/`endedAt` when
+  omitted.
 - `trace.recordToolCall({ toolName, input, output, status, spanId, error })`.
 - `trace.recordEvent(type, name, { input, output, error, metadata, parentId })`
   and `trace.log(name, data)`.

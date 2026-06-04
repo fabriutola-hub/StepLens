@@ -75,12 +75,35 @@ await replay.shutdown(); // flush before exit
 - `run.tool(name, input, fn)` — records a tool call's input/output.
 - `run.model("provider:model", opts, fn)` — records a model call + estimated cost.
 
-Using OpenAI? Wrap the client and calls inside `record()` are captured automatically:
+Using a real LLM stack? Wrap your client/functions once and calls made inside
+`record()` are captured automatically — spans, model calls, tool calls,
+completed streams, tokens, and estimated cost:
 
 ```ts
 import { wrapOpenAI } from "@agent-replay/sdk/integrations/openai";
 const openai = wrapOpenAI(new OpenAI(), { replay });
 ```
+
+### Integrations
+
+| Integration | Import | Wrap | Streaming | Template |
+| ----------- | ------ | ---- | --------- | -------- |
+| **OpenAI** | `@agent-replay/sdk/integrations/openai` | `wrapOpenAI(client)` | `stream: true` (recorded when fully consumed) | `agent-replay new openai` |
+| **Vercel AI SDK** | `@agent-replay/sdk/integrations/vercel-ai` | `wrapAISDK({ generateText, streamText, … })` | `streamText` / `streamObject` via `onFinish` | `agent-replay new vercel-ai` |
+| **Anthropic** | `@agent-replay/sdk/integrations/anthropic` | `wrapAnthropic(client)` | `messages.stream(…).finalMessage()` | `agent-replay new anthropic` |
+| **Google Gemini** | `@agent-replay/sdk/integrations/google` | `wrapGoogleGenAI(client)` | `generateContentStream` (recorded when fully consumed) | `agent-replay new google` |
+| **LangChain / LangGraph** | `@agent-replay/sdk/integrations/langchain` | `createLangChainCallbackHandler()` | via LangChain callbacks | `agent-replay new langchain` |
+| **Ollama** | — (use `run.model("ollama:…")`) | — | — | `agent-replay new ollama` |
+
+All integrations use **structural types only** — none of `openai`, `ai`,
+`@anthropic-ai/sdk`, `@google/genai`, or `@langchain/*` are dependencies of the
+SDK. You pass in your real client/functions; outside `record()` everything
+passes through untouched, and **streams are never consumed on your behalf**.
+
+A LangChain agent recorded with `createLangChainCallbackHandler()` — spans,
+model calls, tool calls, tokens, and estimated cost:
+
+![LangChain trace in StepLens](docs/images/trace-langchain.png)
 
 The lower-level `createClient` / `Trace` / `Span` API is still fully supported.
 Full details in [`docs/sdk.md`](docs/sdk.md).
@@ -151,7 +174,7 @@ rough estimates, not billing figures. Unknown models simply show no cost.
 
 It is **local-first** and intentionally has **no
 authentication, accounts, or cloud** — do not expose it to an untrusted network
-(see [`SECURITY.md`](SECURITY.md)). The `0.1` SDK API is unchanged; APIs may
+(see [`SECURITY.md`](SECURITY.md)). The `0.2` SDK API is unchanged; APIs may
 still evolve before `1.0`.
 
 Contributions welcome — see [`CONTRIBUTING.md`](CONTRIBUTING.md). Licensed under

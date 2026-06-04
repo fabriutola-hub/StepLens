@@ -4,6 +4,70 @@ All notable changes to this project are documented here. The format is loosely
 based on [Keep a Changelog](https://keepachangelog.com/), and the project aims
 to follow [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] — 2026-06-03
+
+Integrations release. StepLens now works with real LLM stacks — Vercel AI SDK,
+LangChain/LangGraph, Anthropic, and Google Gemini — with a minimal
+wrapper/callback and no manual instrumentation. Still local-first: no cloud, no
+accounts, no DB migration, and fully compatible with the `0.2` API.
+
+### Added
+- **Vercel AI SDK integration** — `@agent-replay/sdk/integrations/vercel-ai`'s
+  `wrapAISDK({ generateText, streamText, generateObject?, streamObject? })`:
+  records `generateText`/`generateObject` on resolution and
+  `streamText`/`streamObject` via `onFinish`/`onError` (your callbacks are
+  preserved). Multi-step calls record one model call per step plus the step's
+  tool calls. Provider/model extracted from gateway strings
+  (`"openai/gpt-4o-mini"`) or language-model objects (`provider`/`modelId`).
+- **Anthropic integration** — `@agent-replay/sdk/integrations/anthropic`'s
+  `wrapAnthropic(client)`: records `messages.create` (tokens from `usage`,
+  text content, and `stop_reason`/`id`/cache-token metadata) and
+  `messages.stream(...)` by wrapping `finalMessage()` — streaming is recorded
+  only when you call/await `finalMessage()`.
+- **Google Gemini integration** — `@agent-replay/sdk/integrations/google`'s
+  `wrapGoogleGenAI(client)`: records `models.generateContent` and
+  `models.generateContentStream` (transparent async iterable; text accumulates
+  per chunk, last `usageMetadata` wins). Extracts `promptTokenCount`,
+  `candidatesTokenCount`, `totalTokenCount`, `modelVersion`, and `responseId`.
+- **LangChain / LangGraph integration** —
+  `@agent-replay/sdk/integrations/langchain`'s
+  `createLangChainCallbackHandler(options?)`: chains/agents → spans,
+  retrievers → `retrieval` spans, tools → spans + tool calls, LLM/chat models →
+  spans + model calls. Preserves the `runId`/`parentRunId` hierarchy, records
+  `handle*Error` failures, and reads tokens from `llmOutput.tokenUsage`,
+  `usage_metadata`, `response_metadata.tokenUsage`, or equivalents. Works
+  inside `replay.record()` or opens its own trace with `{ replay, traceName }`.
+- **OpenAI streaming** — `wrapOpenAI` now supports `{ stream: true }` on
+  `chat.completions.create` and `responses.create`: the stream is returned
+  untouched and the model call is recorded only once it is consumed to
+  completion (never auto-drained; abandoning a stream records nothing).
+- **Optional timestamps on `Trace.recordModelCall`** — `startedAt`, `endedAt`,
+  and `durationMs` (backward compatible; `durationMs` is derived when omitted).
+  No schema/DB change — the fields already existed in core and ingest.
+- **CLI templates** — `agent-replay new vercel-ai|anthropic|google|langchain`,
+  each stating the required package, the required API key, and a clear
+  real-cost warning. `simple`, `error`, `openai`, and `ollama` are unchanged.
+- Unit tests for every integration using fake structural clients (no provider
+  SDKs installed), plus CLI template tests.
+
+### Changed
+- README gained an integration matrix; `docs/sdk.md` documents every
+  integration; `docs/cli.md` lists the new templates.
+- `SDK_VERSION` and `CORE_VERSION` now track the package version (`0.3.0`).
+- All packages bumped to `0.3.0` (package names stay `@agent-replay/*` for
+  compatibility).
+
+### Notes
+- Integrations use **structural types only** — `openai`, `ai`,
+  `@anthropic-ai/sdk`, `@google/genai`, `langchain`, and `@langchain/*` are
+  **not** runtime dependencies of the SDK. Calls outside `record()` pass
+  through untouched.
+- Streams are recorded on completion, not at start, and are never consumed
+  automatically.
+- Costs remain estimates from the static pricing table; unknown models show
+  tokens without a cost.
+- No SQLite migration.
+
 ## [0.2.0] — 2026-06-03
 
 Developer-experience release. Easier to try, instrument, and share — without

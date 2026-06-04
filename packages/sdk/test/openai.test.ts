@@ -98,3 +98,129 @@ describe("wrapOpenAI", () => {
     expect(openai.models.list()).toBe("models-ok");
   });
 });
+
+/** Fake client whose create endpoints return async-iterable streams. */
+function makeFakeStreamingOpenAI() {
+  async function* chatChunks() {
+    yield { choices: [{ delta: { content: "hel" } }] };
+    yield { choices: [{ delta: { content: "lo" } }] };
+    yield { choices: [], usage: { prompt_tokens: 10, completion_tokens: 2 } };
+  }
+  async function* responseEvents() {
+    yield { type: "response.output_text.delta", delta: "res" };
+    yield { type: "response.output_text.delta", delta: "ponded" };
+    yield {
+      type: "response.completed",
+      response: { usage: { input_tokens: 5, output_tokens: 3 } },
+    };
+  }
+  const client = {
+    chat: {
+      completions: {
+        create: async (_args: unknown) => chatChunks(),
+      },
+    },
+    responses: {
+      create: async (_args: unknown) => responseEvents(),
+    },
+  };
+  return { client };
+}
+
+describe("wrapOpenAI streaming", () => {
+  it("records a chat completions stream once it is fully consumed", async () => {
+    const collector = new MemoryCollector();
+    const replay = createReplay({ collector });
+    const { client } = makeFakeStreamingOpenAI();
+    const openai = wrapOpenAI(client, { replay });
+
+    await replay.record("Streaming Agent", async () => {
+      const stream = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [{ role: "user", content: "Hello" }],
+        stream: true,
+      });
+      const seen: string[] = [];
+      for await (const chunk of stream as AsyncIterable<{
+        choices?: Array<{ delta?: { content?: string } }>;
+      }>) {
+        const delta = chunk.choices?.[0]?.delta?.content;
+        if (delta) seen.push(delta);
+      }
+      expect(seen).toEqual(["hel", "lo"]);
+    });
+
+    expect(collector.modelCalls).toHaveLength(1);
+    const mc = collector.modelCalls[0];
+    expect(mc.provider).toBe("openai");
+    expect(mc.model).toBe("gpt-4o-mini");
+    expect(mc.response).toBe("hello");
+    expect(mc.inputTokens).toBe(10);
+    expect(mc.outputTokens).toBe(2);
+    expect(mc.metadata?.streamed).toBe(true);
+    expect(mc.endedAt).toBeGreaterThanOrEqual(mc.startedAt);
+  });
+
+  it("records a responses stream from delta events and the completed event", async () => {
+    const collector = new MemoryCollector();
+    const replay = createReplay({ collector });
+    const { client } = makeFakeStreamingOpenAI();
+    const openai = wrapOpenAI(client, { replay });
+
+    await replay.record("Responses Streaming", async () => {
+      const stream = await openai.responses.create({
+        model: "gpt-4o",
+        input: "Hi",
+        stream: true,
+      });
+      for await (const _event of stream as AsyncIterable<unknown>) {
+        // consume to completion
+      }
+    });
+
+    expect(collector.modelCalls).toHaveLength(1);
+    const mc = collector.modelCalls[0];
+    expect(mc.response).toBe("responded");
+    expect(mc.prompt).toBe("Hi");
+    expect(mc.inputTokens).toBe(5);
+    expect(mc.outputTokens).toBe(3);
+    expect(mc.metadata?.streamed).toBe(true);
+  });
+
+  it("records nothing when the consumer breaks out of the stream early", async () => {
+    const collector = new MemoryCollector();
+    const replay = createReplay({ collector });
+    const { client } = makeFakeStreamingOpenAI();
+    const openai = wrapOpenAI(client, { replay });
+
+    await replay.record("Abandoned Stream", async () => {
+      const stream = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [],
+        stream: true,
+      });
+      for await (const _chunk of stream as AsyncIterable<unknown>) {
+        break; // bail after the first chunk
+      }
+    });
+
+    expect(collector.modelCalls).toHaveLength(0);
+  });
+
+  it("passes streams through untouched outside a record() run", async () => {
+    const collector = new MemoryCollector();
+    createReplay({ collector });
+    const { client } = makeFakeStreamingOpenAI();
+    const openai = wrapOpenAI(client);
+
+    const stream = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [],
+      stream: true,
+    });
+    let chunks = 0;
+    for await (const _chunk of stream as AsyncIterable<unknown>) chunks++;
+    expect(chunks).toBe(3);
+    expect(collector.modelCalls).toHaveLength(0);
+  });
+});

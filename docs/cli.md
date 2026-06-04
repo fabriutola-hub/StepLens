@@ -6,7 +6,7 @@ directly: `node packages/cli/dist/index.js <command>` after `pnpm build`).
 
 ```bash
 pnpm agent-replay --help
-pnpm agent-replay --version   # 0.1.0
+pnpm agent-replay --version   # 0.3.0
 ```
 
 Every command that talks to Studio takes `-e, --endpoint <url>` (default
@@ -55,20 +55,29 @@ pnpm agent-replay record -e http://localhost:3001 -- python agent.py
 ## `new`
 
 Generate a runnable example file. Templates: `simple`, `error`, `openai`,
-`ollama`.
+`ollama`, `vercel-ai`, `anthropic`, `google`, `langchain`.
 
 ```bash
 pnpm agent-replay new simple                 # → agent-replay-example.mjs
 pnpm agent-replay new ollama --out demo.mjs
 pnpm agent-replay new openai -e http://localhost:3001 --force
+pnpm agent-replay new anthropic
 ```
 
 Options: `--out <path>` (default `agent-replay-example.mjs`), `--endpoint <url>`,
 `--force` (overwrite). It won't overwrite an existing file without `--force`.
 
 - `simple`, `error`, and `ollama` need **no API key**.
-- `openai` requires `OPENAI_API_KEY` and `npm i openai`, and **calls the real
-  API (may cost money)** — the command warns you.
+- The integration templates **call a real API (may cost money)** — the command
+  warns you and tells you what to install and which key to set:
+
+| Template | Package(s) | API key |
+| -------- | ---------- | ------- |
+| `openai` | `npm i openai` | `OPENAI_API_KEY` |
+| `vercel-ai` | `npm i ai @ai-sdk/openai` | `OPENAI_API_KEY` |
+| `anthropic` | `npm i @anthropic-ai/sdk` | `ANTHROPIC_API_KEY` |
+| `google` | `npm i @google/genai` | `GEMINI_API_KEY` |
+| `langchain` | `npm i @langchain/openai @langchain/core` | `OPENAI_API_KEY` |
 
 After generating, the command prints how to start Studio, run the file, and
 where to view the trace. Run the generated file with `node <file>` (inside this

@@ -7,3 +7,6 @@ allowBuilds:
   msw: true
   sharp: true
   unrs-resolver: true
+# Don't 'pnpm install' before every script: package.json edits would trigger
+# reinstalls, which fail on Windows setups without symlink privileges.
+verifyDepsBeforeRun: false
