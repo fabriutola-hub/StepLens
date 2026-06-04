@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/fabriutola-hub/StepLens/actions/workflows/ci.yml/badge.svg)](https://github.com/fabriutola-hub/StepLens/actions/workflows/ci.yml)
 [![Release](https://github.com/fabriutola-hub/StepLens/actions/workflows/release.yml/badge.svg)](https://github.com/fabriutola-hub/StepLens/actions/workflows/release.yml)
-![Version](https://img.shields.io/badge/version-0.66.0-blue.svg)
+![Version](https://img.shields.io/badge/version-0.8.0-blue.svg)
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Node](https://img.shields.io/badge/node-%3E%3D18-brightgreen.svg)
 
@@ -273,7 +273,7 @@ other sensitive application data. It is stored locally in plaintext SQLite.
 
 ## Project Status
 
-Current version: **0.66.0**.
+Current version: **0.8.0**.
 
 StepLens is installable from npm, can run Studio locally, includes SDK
 integrations for common LLM stacks, ships Docker support, and can export traces

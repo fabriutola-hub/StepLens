@@ -42,15 +42,25 @@ describe("agent-replay CLI", () => {
   it("--help lists all commands", async () => {
     const { code, stdout } = await runCli(["--help"]);
     expect(code).toBe(0);
-    for (const cmd of ["dev", "doctor", "init", "export", "record", "demo"]) {
+    for (const cmd of [
+      "dev",
+      "doctor",
+      "init",
+      "export",
+      "record",
+      "demo",
+      "stats",
+      "prune",
+      "watch",
+    ]) {
       expect(stdout).toContain(cmd);
     }
   });
 
-  it("--version prints 0.66.0", async () => {
+  it("--version prints 0.8.0", async () => {
     const { code, stdout } = await runCli(["--version"]);
     expect(code).toBe(0);
-    expect(stdout.trim()).toBe("0.66.0");
+    expect(stdout.trim()).toBe("0.8.0");
   });
 
   it("doctor runs and reports a system check", async () => {

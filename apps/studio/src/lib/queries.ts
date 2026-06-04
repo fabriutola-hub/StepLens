@@ -803,6 +803,119 @@ export async function deleteTrace(traceId: string): Promise<boolean> {
   return true;
 }
 
+// ── Bulk operations ───────────────────────────────────────────────────────────
+
+/**
+ * Bulk delete. Returns the count of rows actually deleted (ignores ids that
+ * don't exist instead of erroring — bulk operations are best-effort).
+ */
+export async function bulkDeleteTraces(traceIds: string[]): Promise<number> {
+  if (traceIds.length === 0) return 0;
+  const db = getDatabase();
+  const before = db
+    .select({ id: traces.id })
+    .from(traces)
+    .where(inArray(traces.id, traceIds))
+    .all();
+  if (before.length === 0) return 0;
+  db.delete(traces).where(inArray(traces.id, traceIds)).run();
+  return before.length;
+}
+
+/**
+ * Apply a tag patch (add or remove) to many traces at once. Returns the count
+ * of annotations actually written.
+ */
+export async function bulkUpdateTags(
+  traceIds: string[],
+  op: "add" | "remove",
+  tag: string
+): Promise<number> {
+  if (traceIds.length === 0 || !tag.trim()) return 0;
+  const db = getDatabase();
+  const now = Date.now();
+  let written = 0;
+
+  // We can't reach `upsertAnnotation` directly because it accepts a partial
+  // patch; for tag set-arithmetic we want fresh-read-merge-write per row.
+  db.transaction((tx) => {
+    for (const traceId of traceIds) {
+      const existsRows = tx
+        .select({ id: traces.id })
+        .from(traces)
+        .where(eq(traces.id, traceId))
+        .all();
+      if (existsRows.length === 0) continue;
+
+      const current = tx
+        .select()
+        .from(traceAnnotations)
+        .where(eq(traceAnnotations.traceId, traceId))
+        .all();
+      const existing = current[0];
+
+      const currentTags = normalizeTags(existing?.tags ?? []);
+      let nextTags: string[];
+      if (op === "add") {
+        nextTags = currentTags.includes(tag) ? currentTags : [...currentTags, tag].sort();
+      } else {
+        nextTags = currentTags.filter((t) => t !== tag);
+      }
+
+      if (existing) {
+        tx.update(traceAnnotations)
+          .set({ tags: nextTags, updatedAt: now })
+          .where(eq(traceAnnotations.traceId, traceId))
+          .run();
+      } else {
+        tx.insert(traceAnnotations)
+          .values({
+            traceId,
+            favorite: false,
+            note: null,
+            tags: nextTags,
+            updatedAt: now,
+          })
+          .run();
+      }
+      written += 1;
+    }
+  });
+
+  return written;
+}
+
+/**
+ * Resolve a list of trace ids to their full `TraceExport` bundles — used by
+ * the bulk-export endpoint to stream a NDJSON/ZIP payload.
+ */
+export async function listTraceExports(
+  traceIds: string[]
+): Promise<TraceExport[]> {
+  if (traceIds.length === 0) return [];
+  const out: TraceExport[] = [];
+  for (const id of traceIds) {
+    const detail = await getTraceDetail(id);
+    if (!detail) continue;
+    const span = flattenSpansForExport(detail.spans);
+    out.push({
+      trace: detail.trace as TraceExport["trace"],
+      events: detail.events as TraceExport["events"],
+      spans: span,
+      modelCalls: detail.modelCalls as TraceExport["modelCalls"],
+      toolCalls: detail.toolCalls as TraceExport["toolCalls"],
+    });
+  }
+  return out;
+}
+
+function flattenSpansForExport(
+  list: Array<{ children?: unknown }>
+): TraceExport["spans"] {
+  // Already a tree from getTraceDetail; the export format preserves children.
+  return list as TraceExport["spans"];
+}
+
 // ── Import ──────────────────────────────────────────────────────────────────
 
 type ExportSpan = TraceExport["spans"][number];

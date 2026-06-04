@@ -1,0 +1,53 @@
+name: Feature request
+description: Suggest a new feature or enhancement
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for proposing an idea! Framing the **problem** first — not
+        the solution — makes it much easier to discuss trade-offs.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      description: The user-facing pain. Skip jumping to a solution here.
+      placeholder: |
+        "When I have 1000+ traces in my local DB, the Workbench takes
+        several seconds to load every filter change…"
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: What would the ideal experience look like?
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you have considered
+      description: Workarounds, other tools, hand-wavy approaches.
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Which area would this affect?
+      multiple: true
+      options:
+        - Studio UI
+        - SDK
+        - CLI
+        - Docker / deploy
+        - OpenTelemetry bridge
+        - Documentation
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: Sketches, prior art, related issues, links.

@@ -1,6 +1,6 @@
 {
   "name": "@agent-replay/cli",
-  "version": "0.66.0",
+  "version": "0.8.0",
   "description": "Command-line interface for StepLens — demo, record, export, and start Studio.",
   "license": "MIT",
   "repository": {

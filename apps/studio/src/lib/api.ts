@@ -198,3 +198,115 @@ export async function ingestEvents(
   if (!res.ok) throw new Error(`API error: ${res.status}`);
   return res.json();
 }
+
+// ── Bulk operations ─────────────────────────────────────────────────────────
+
+export interface BulkResult {
+  ok: true;
+  /** Rows affected, when known. */
+  deleted?: number;
+  written?: number;
+  tag?: string;
+  tagOp?: "add" | "remove";
+}
+
+export async function bulkDeleteTraces(ids: string[]): Promise<BulkResult> {
+  const res = await fetch(`${API_BASE}/api/traces/bulk`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ op: "delete", ids }),
+  });
+  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  return res.json();
+}
+
+export async function bulkTagTraces(
+  ids: string[],
+  tagOp: "add" | "remove",
+  tag: string
+): Promise<BulkResult> {
+  const res = await fetch(`${API_BASE}/api/traces/bulk`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ op: "tag", ids, tagOp, tag }),
+  });
+  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  return res.json();
+}
+
+/** Download a bulk export zip. Triggers a browser save dialog. */
+export async function exportBulk(ids: string[]): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/export/bulk`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids }),
+  });
+  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  const ts = new Date().toISOString().replace(/[:.]/g, "-");
+  a.download = `steplens-bulk-${ts}.zip`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// ── Activity heat map ───────────────────────────────────────────────────────
+
+export interface ActivityResponse {
+  from: number;
+  to: number;
+  fromBucket: number;
+  toBucket: number;
+  tz: number;
+  /** Maps "bucket" (days-since-epoch) → count. Sparse. */
+  counts: Record<string, number>;
+}
+
+export async function getActivity(opts: {
+  from?: number;
+  to?: number;
+  tzOffsetMinutes?: number;
+} = {}): Promise<ActivityResponse> {
+  const search = new URLSearchParams();
+  if (opts.from != null) search.set("from", String(opts.from));
+  if (opts.to != null) search.set("to", String(opts.to));
+  if (opts.tzOffsetMinutes != null) search.set("tz", String(opts.tzOffsetMinutes));
+  return getJson<ActivityResponse>(`/api/activity?${search.toString()}`);
+}
+
+// ── Live updates (Server-Sent Events) ───────────────────────────────────────
+
+export interface SseTraceEvent {
+  id: string;
+  name: string;
+  status: string;
+  startedAt: number;
+}
+
+/** Open an SSE connection. Caller must `close()` when done. */
+export function openTraceEventStream(
+  handlers: {
+    onTrace?: (t: SseTraceEvent) => void;
+    onError?: (e: Event) => void;
+    onClose?: () => void;
+  } = {}
+): EventSource {
+  const es = new EventSource(`${API_BASE}/api/events/stream`);
+  if (handlers.onTrace) {
+    es.addEventListener("trace", (e) => {
+      try {
+        const data = JSON.parse((e as MessageEvent).data) as SseTraceEvent;
+        handlers.onTrace!(data);
+      } catch {
+        // ignore malformed
+      }
+    });
+  }
+  if (handlers.onError) es.addEventListener("error", handlers.onError);
+  if (handlers.onClose) es.addEventListener("close", handlers.onClose);
+  return es;
+}

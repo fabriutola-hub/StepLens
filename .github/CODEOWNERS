@@ -1,0 +1,29 @@
+# CODEOWNERS — auto-request reviews when a PR touches these paths.
+# Order matters: later patterns override earlier ones.
+# See: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-security/customizing-your-repository/about-code-owners
+
+# Default owner for everything in the repo.
+*                                @fabriutola-hub
+
+# Packages
+/packages/core/                  @fabriutola-hub
+/packages/sdk/                   @fabriutola-hub
+/packages/cli/                   @fabriutola-hub
+/packages/otel/                  @fabriutola-hub
+/packages/steplens/              @fabriutola-hub
+/packages/examples/              @fabriutola-hub
+
+# Studio app
+/apps/studio/                    @fabriutola-hub
+
+# Build, CI, governance
+/.github/                        @fabriutola-hub
+/Dockerfile                      @fabriutola-hub
+/turbo.json                      @fabriutola-hub
+/pnpm-workspace.yaml             @fabriutola-hub
+
+# Docs
+/docs/                           @fabriutola-hub
+/README.md                       @fabriutola-hub
+/CHANGELOG.md                    @fabriutola-hub
+/ROADMAP.md                      @fabriutola-hub

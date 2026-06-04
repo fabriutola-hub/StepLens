@@ -7,6 +7,7 @@ import { Toaster } from "@/components/ui/toast";
 import { ConfirmDialogHost } from "@/components/ui/confirm-dialog";
 import { ShortcutsHelp } from "@/components/shortcuts-help";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { ErrorBoundary } from "@/components/error-boundary";
 import { THEME_INIT_SCRIPT } from "@/lib/theme";
 import "./globals.css";
 
@@ -44,48 +45,56 @@ export default function RootLayout({
       </head>
       <body className="min-h-screen bg-background font-sans antialiased">
         <TooltipProvider>
-          <div className="flex min-h-screen flex-col">
-            {/* ── Top Nav ─────────────────────────────────────────── */}
-            <nav className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur">
-              <div className="mx-auto flex h-14 max-w-7xl items-center gap-6 px-6">
-                <Link
-                  href="/"
-                  className="flex items-center gap-2 font-semibold"
-                >
-                  <Activity className="size-5" />
-                  <span className="hidden sm:inline">StepLens</span>
-                </Link>
-                <div className="flex items-center gap-1">
+          <ErrorBoundary>
+            <div className="flex min-h-screen flex-col">
+              {/* ── Top Nav ─────────────────────────────────────────── */}
+              <nav className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur">
+                <div className="mx-auto flex h-14 max-w-7xl items-center gap-6 px-6">
                   <Link
-                    href="/traces"
-                    className="rounded-md px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    href="/"
+                    className="flex items-center gap-2 font-semibold"
                   >
-                    Traces
+                    <Activity className="size-5" />
+                    <span className="hidden sm:inline">StepLens</span>
                   </Link>
+                  <div className="flex items-center gap-1">
+                    <Link
+                      href="/traces"
+                      className="rounded-md px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    >
+                      Traces
+                    </Link>
+                    <Link
+                      href="/settings"
+                      className="rounded-md px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    >
+                      Settings
+                    </Link>
+                  </div>
+                  <div className="ml-auto flex items-center gap-1">
+                    <a
+                      href="https://github.com/fabriutola-hub/StepLens"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="rounded-md px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                      title="View source on GitHub"
+                    >
+                      GitHub
+                    </a>
+                    <ThemeToggle />
+                  </div>
                 </div>
-                <div className="ml-auto flex items-center gap-1">
-                  <a
-                    href="https://github.com/fabriutola-hub/StepLens"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="rounded-md px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                    title="View source on GitHub"
-                  >
-                    GitHub
-                  </a>
-                  <ThemeToggle />
-                </div>
-              </div>
-            </nav>
+              </nav>
 
-            {/* ── Content ──────────────────────────────────────────── */}
-            {children}
+              {/* ── Content ──────────────────────────────────────────── */}
+              {children}
 
-            {/* ── Global overlays ──────────────────────────────────── */}
-            <Toaster />
-            <ConfirmDialogHost />
-            <ShortcutsHelp />
-          </div>
+              {/* ── Global overlays ──────────────────────────────────── */}
+              <Toaster />
+              <ConfirmDialogHost />
+              <ShortcutsHelp />
+            </div>
+          </ErrorBoundary>
         </TooltipProvider>
       </body>
     </html>

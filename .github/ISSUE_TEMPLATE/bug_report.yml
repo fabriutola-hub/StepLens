@@ -1,0 +1,83 @@
+name: Bug report
+description: Something is broken or behaving unexpectedly
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug! A clear repro is the single best gift you
+        can give a maintainer — please fill in everything you can.
+
+  - type: input
+    id: version
+    attributes:
+      label: StepLens version
+      description: "Output of `npx steplens --version` (or the version pinned in your repo)."
+      placeholder: "0.8.0"
+    validations:
+      required: true
+
+  - type: input
+    id: node
+    attributes:
+      label: Node.js version
+      description: "Output of `node --version`."
+      placeholder: "v22.11.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - macOS
+        - Linux
+        - Windows
+        - Docker (Linux container)
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Which surface is affected?
+      multiple: true
+      options:
+        - Studio UI
+        - SDK (recording from agent code)
+        - CLI
+        - Docker image
+        - OpenTelemetry bridge
+        - Documentation
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you see, what did you expect?
+      placeholder: |
+        1. Started Studio with `npx steplens dev`.
+        2. Recorded a trace via `wrapOpenAI(...)`.
+        3. The trace appears in the list but the timeline is empty.
+
+        Expected: timeline shows the model call.
+        Actual: timeline says "No events recorded".
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs / console output
+      description: Studio terminal output, browser console, SDK stderr — whatever you have.
+      render: shell
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: Links, screenshots, environment details, hunches.

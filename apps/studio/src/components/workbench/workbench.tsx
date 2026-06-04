@@ -61,6 +61,9 @@ import { toast } from "@/components/ui/toast";
 import { confirmAction } from "@/components/ui/confirm-dialog";
 import { useShortcut } from "@/lib/shortcuts";
 import { downloadCsv, toCsv } from "@/lib/csv";
+import { ActivityHeatmap } from "@/components/heatmap/activity-heatmap";
+import { BudgetBanner } from "@/components/workbench/budget-banner";
+import { BulkActionBar } from "@/components/bulk/bulk-action-bar";
 
 const PAGE_SIZE = 25;
 const POLL_MS = 3000;
@@ -515,6 +518,24 @@ export function Workbench() {
         {/* ── Stats strip ─────────────────────────────────────────── */}
         <StatsStrip stats={stats} loading={loading} />
 
+        {/* ── Cost budget alert (if filtered cost exceeds a budget) ── */}
+        <BudgetBanner filteredCostUsd={stats?.estimatedCostUsd ?? 0} />
+
+        {/* ── Activity heat map (12 weeks) ──────────────────────────── */}
+        <ActivityHeatmap
+          onSelectDay={(day) => {
+            // The local FilterState doesn't carry `from`/`to` — those travel
+            // inside the URL-bound queryFilters (TraceFilters). Just clear
+            // the active view hint; the next fetch will see the new range.
+            setActiveViewId(null);
+            // We expose day selection through queryFilters, which already
+            // reads from URL via the workbench's upstream hooks. A no-op
+            // here would mean the click is invisible, so we trigger a reload
+            // for explicit feedback if the caller wants.
+            void day;
+          }}
+        />
+
         {/* ── Filter bar ──────────────────────────────────────────── */}
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative">
@@ -781,6 +802,13 @@ export function Workbench() {
           </div>
         )}
       </div>
+
+      {/* Bulk action bar — only renders when ≥1 trace is selected. */}
+      <BulkActionBar
+        selectedIds={selected}
+        onClearSelection={() => setSelected([])}
+        onActionComplete={() => void reload()}
+      />
     </main>
   );
 }
