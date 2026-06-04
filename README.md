@@ -149,7 +149,7 @@ rough estimates, not billing figures. Unknown models simply show no cost.
 
 ## Project status
 
-Early, honest MVP (`0.2.0`). It is **local-first** and intentionally has **no
+It is **local-first** and intentionally has **no
 authentication, accounts, or cloud** — do not expose it to an untrusted network
 (see [`SECURITY.md`](SECURITY.md)). The `0.1` SDK API is unchanged; APIs may
 still evolve before `1.0`.
