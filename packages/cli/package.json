@@ -31,7 +31,7 @@
     "@agent-replay/otel": "workspace:*",
     "@agent-replay/sdk": "workspace:*",
     "better-sqlite3": "^12.10.0",
-    "commander": "^13.1.0"
+    "commander": "^15.0.0"
   },
   "devDependencies": {
     "@agent-replay/examples": "workspace:*",
