@@ -4,6 +4,123 @@ All notable changes to this project are documented here. The format is loosely
 based on [Keep a Changelog](https://keepachangelog.com/), and the project aims
 to follow [Semantic Versioning](https://semver.org/).
 
+## [0.66.0] — 2026-06-04
+
+Studio Polish release. The Workbench grows the rough edges off: every common
+action is one keystroke away, the UI now ships proper light/dark themes,
+destructive actions confirm before firing, and CSV export lets you take a
+filtered slice anywhere. Under the hood the Studio source tree is now
+**lint-clean** under Next 16 / React 19 strict rules — zero warnings, zero
+`any`s in route handlers, no setState-in-effect anywhere. SDK ingest/export
+stays compatible; still no cloud, accounts, auth, or production-monitoring
+scope.
+
+### Added
+- **Keyboard shortcuts**, page-aware and self-documenting. Press `?` anywhere
+  to see what the current page exposes. Workbench: `/` focus search, `e`
+  export CSV, `r` reload, `c` clear filters. Trace detail: `b` back, `s` / `t`
+  / `g` / `v` / `d` for the Summary / Timeline / Graph / Events / Data tabs,
+  `f` toggle favorite. Shortcuts are suppressed inside text fields except `/`.
+- **Dark mode toggle** — three-way switch (`light` | `dark` | `system`) in the
+  top nav, persisted to `localStorage`. An inline init script applies the
+  correct class before first paint so there's no FOUC on reload. The
+  `system` mode tracks `prefers-color-scheme` live.
+- **Health endpoint** — `GET /api/health` returns `{ status, service, version,
+  uptimeMs, startedAt, db: { connected, traceCount?, error? } }`. Returns
+  `200` when SQLite is reachable, `503` otherwise. Suitable for Docker
+  `HEALTHCHECK`, Kubernetes readiness probes, and uptime monitors. Always
+  `Cache-Control: no-store`.
+- **CSV export** of the filtered Workbench list — `Download CSV` button in
+  the header or the `e` shortcut. Pulls the full filtered population (not
+  just the current page), RFC 4180-quoted, UTF-8 with BOM so Excel renders
+  accented characters correctly. Columns: id, name, status, startedAt,
+  endedAt, durationMs, estimatedCostUsd, tags, favorite, note.
+- **Toast notifications** — a tiny built-in, no extra dependencies. Used for
+  delete success/failure and CSV export feedback. Top-right stack, auto-
+  dismiss after 3.5s (5s for errors), `aria-live` polite for screen readers.
+- **Confirm-before-delete** dialog — deleting a trace now opens a destructive-
+  variant confirm with the trace name, so an accidental click on the row's
+  trash icon no longer wipes data silently. `Enter` confirms, `Esc` cancels.
+- **GitHub link** in the top nav for quick discovery.
+
+### Changed
+- **Studio is now lint-clean.** 27 errors and 2 warnings under `pnpm lint`
+  before this release, all resolved: no `any` in any route handler (a shared
+  `internalError(err)` helper replaces the per-handler boilerplate), no
+  `setState`-inside-effect anywhere (effects either schedule via
+  `queueMicrotask`, read external state via `useSyncExternalStore`, or let the
+  caller remount via `key`), no `Date.now()` during render (the detail page
+  now derives `traceEnd` from recorded event/span timestamps), and the
+  `EmptyState`'s `window.location.origin` lookup moved to
+  `useSyncExternalStore`. The Studio span tree in `queries.getTrace` is now
+  typed end-to-end (no more `any` span nodes).
+- `Input` is now a `forwardRef` so callers can focus it programmatically (used
+  by the `/` shortcut).
+- `SDK_VERSION`, `CORE_VERSION`, `CLI_VERSION`, and every package report
+  `0.66.0`. Package names stay `@agent-replay/*`; the `steplens` /
+  `agent-replay` binaries are unchanged.
+- The bundled SDK snippet in `EmptyState` now references `npx steplens demo`
+  (matching the published binary name).
+
+### Fixed
+- Compare view no longer logs a React-19 setState-in-effect warning when the
+  page is opened directly with `?left=…&right=…`.
+- `AnnotationPanel` no longer cascades a re-render when navigating between
+  traces — it now remounts via `key={traceId}` from the caller, which is the
+  React 19-recommended pattern for resetting derived state.
+
+## [0.65.0] — 2026-06-04
+
+Studio Workbench release. A local-first product-quality upgrade focused on
+finding, comparing, and understanding traces faster. SDK ingest/export stays
+compatible; still no cloud, accounts, auth, or production-monitoring scope.
+
+### Added
+- **Additive SQLite migrations** — Studio now tracks applied migrations in a
+  `schema_migrations` table and upgrades a `0.4.0`-era database in place,
+  idempotently and without data loss (no destructive resets).
+- **Local Studio metadata** — new `trace_annotations` (favorite, note, tags)
+  and `saved_views` tables. Annotations are machine-local and are **not** part
+  of recorded traces or exports.
+- **Advanced trace search & filtering** — `/api/traces` gained `q`, `status`,
+  `from`, `to`, `model`, `tool`, `hasError`, `favorite`, `tag`, `sort`,
+  `order`, `limit`, and `offset`.
+- **Filtered stats** — `GET /api/traces/stats` returns count, status counts,
+  total/avg/p95 duration, total tokens, estimated cost, model/tool counts, and
+  error rate over the filtered population.
+- **Annotations API** — `GET`/`PUT /api/traces/:id/annotation` for local
+  favorite/note/tags updates.
+- **Saved views API** — `GET`/`POST /api/views` and `PUT`/`DELETE
+  /api/views/:id`.
+- **Trace comparison** — `GET /api/compare?left=&right=` returns both traces
+  plus deltas for duration, cost, tokens, errors, models, tools, and matched
+  spans by `kind:name`, with a `/compare` view of delta cards, side-by-side
+  metadata, and breakdowns.
+- **Studio Workbench UI** — replaces the simple list with a dense workbench:
+  search, facet filters, sortable table, stats strip, favorite/tag indicators,
+  saved views, compare selection, and clear empty/loading/error states. Polling
+  pauses while editing filters.
+- **Trace detail** — new Summary tab with hotspots (slowest spans / model calls
+  / tools, errors, totals, and a critical shortlist); clicking a hotspot selects
+  the same item in the timeline/inspector. Timeline gained category/status
+  filtering and in-trace search. Detail and list gained a favorite toggle, tag
+  editor, and a local note panel.
+
+### Changed
+- The two duplicate Studio API clients were unified into one typed client built
+  on a shared `trace-types` contract, so list/detail/stats/annotations/views/
+  compare share the same shapes.
+- The timeline now includes nested child spans (previously root-only), so
+  hotspot selection resolves any span.
+- `SDK_VERSION`, `CORE_VERSION`, and the CLI version now report `0.65.0`; all
+  packages bumped to `0.65.0` (package names stay `@agent-replay/*` and the
+  `steplens`/`agent-replay` binaries are unchanged).
+
+### Notes
+- Trace export remains trace data only; local notes/tags/favorites are Studio
+  metadata and are not exported.
+- Existing `~/.agent-replay/studio.db` files upgrade automatically on first open.
+
 ## [0.3.0] — 2026-06-03
 
 Integrations release. StepLens now works with real LLM stacks — Vercel AI SDK,

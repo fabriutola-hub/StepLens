@@ -40,9 +40,12 @@ export function ReplayControls({ items, traceStart, traceEnd }: ReplayControlsPr
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, [playing, setPlaying]);
 
-  // Replay engine using requestAnimationFrame
+  // Replay engine using requestAnimationFrame. We read `items` indirectly
+  // through `itemsRef.current` so a fresh `items` array doesn't restart the
+  // animation loop — but it means the deps must reflect that the effect does
+  // not actually depend on the items array itself.
   useEffect(() => {
-    if (!playing || items.length === 0) {
+    if (!playing || itemsRef.current.length === 0) {
       if (animationRef.current) {
         cancelAnimationFrame(animationRef.current);
         animationRef.current = null;

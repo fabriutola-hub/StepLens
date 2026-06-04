@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { traceExportSchema } from "@agent-replay/core";
 import { importTrace } from "../../../lib/queries";
+import { internalError } from "../../../lib/http-errors";
 
 export async function POST(request: NextRequest) {
   try {
@@ -29,10 +30,7 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({ ok: true, traceId: result.traceId, replaced: replace });
-  } catch (error: any) {
-    return NextResponse.json(
-      { error: "Internal server error", details: error.message },
-      { status: 500 }
-    );
+  } catch (error: unknown) {
+    return internalError(error);
   }
 }

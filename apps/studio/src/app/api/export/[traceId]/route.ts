@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getTraceDetail } from "../../../../lib/queries";
+import { internalError } from "../../../../lib/http-errors";
 
 export async function GET(
   request: NextRequest,
@@ -28,10 +29,7 @@ export async function GET(
         "Content-Disposition": `attachment; filename="trace-${traceId}.json"`,
       },
     });
-  } catch (error: any) {
-    return NextResponse.json(
-      { error: "Internal server error", details: error.message },
-      { status: 500 }
-    );
+  } catch (error: unknown) {
+    return internalError(error);
   }
 }

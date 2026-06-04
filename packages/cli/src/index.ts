@@ -5,7 +5,7 @@ import { createRequire } from "node:module";
 import { existsSync } from "node:fs";
 import { resolve, dirname, join } from "node:path";
 
-const CLI_VERSION = "0.4.0";
+const CLI_VERSION = "0.66.0";
 const DEFAULT_ENDPOINT = "http://localhost:3000";
 
 const program = new Command();

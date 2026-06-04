@@ -68,8 +68,22 @@ function getCategoryColor(
  * Convert all trace data into a sorted array of timeline items with
  * percentage-based positions for CSS rendering.
  */
+/** Flatten a (possibly nested) span tree into a single list. */
+export function flattenSpans(spans: SpanRow[]): SpanRow[] {
+  const out: SpanRow[] = [];
+  const walk = (list: SpanRow[] | undefined) => {
+    for (const span of list ?? []) {
+      out.push(span);
+      if (span.children && span.children.length) walk(span.children);
+    }
+  };
+  walk(spans);
+  return out;
+}
+
 export function buildTimeline(detail: TraceDetail): TimelineItem[] {
-  const { trace, events, spans, modelCalls, toolCalls } = detail;
+  const { trace, events, modelCalls, toolCalls } = detail;
+  const spans = flattenSpans(detail.spans);
 
   // Determine the time range of the entire trace
   const traceStart = trace.startedAt;
@@ -217,4 +231,182 @@ export function computeSummary(detail: TraceDetail): TraceSummary {
     totalTokens,
     estimatedCostUsd,
   };
+}
+
+// ── Hotspots ──────────────────────────────────────────────────────────────────
+
+export interface Hotspot {
+  /** Matches the id of the corresponding timeline item, for cross-selection. */
+  id: string;
+  category: TimelineCategory;
+  label: string;
+  subLabel: string;
+  durationMs: number | null;
+  status: string | null;
+  /** Optional extra context (tokens, cost, error message). */
+  detail?: string;
+}
+
+export interface TraceHotspots {
+  slowestSpans: Hotspot[];
+  slowestModelCalls: Hotspot[];
+  slowestTools: Hotspot[];
+  errors: Hotspot[];
+  /** Cross-category "needs attention" list: errors, most expensive, slowest. */
+  critical: Hotspot[];
+  totalTokens: number;
+  estimatedCostUsd: number;
+}
+
+const HOTSPOT_LIMIT = 5;
+
+function byDurationDesc<T extends { durationMs: number | null }>(a: T, b: T) {
+  return (b.durationMs ?? 0) - (a.durationMs ?? 0);
+}
+
+/**
+ * Compute hotspots for the summary panel: slowest spans / model calls / tools,
+ * errors, and a cross-category "critical" shortlist. Each hotspot carries the
+ * id of its timeline item so a click can select the same item elsewhere.
+ */
+export function computeHotspots(detail: TraceDetail): TraceHotspots {
+  const spans = flattenSpans(detail.spans);
+
+  const slowestSpans: Hotspot[] = [...spans]
+    .filter((s) => (s.durationMs ?? 0) > 0)
+    .sort(byDurationDesc)
+    .slice(0, HOTSPOT_LIMIT)
+    .map((s) => ({
+      id: s.id,
+      category: "span" as const,
+      label: s.name,
+      subLabel: s.kind,
+      durationMs: s.durationMs,
+      status: s.status,
+    }));
+
+  const slowestModelCalls: Hotspot[] = [...detail.modelCalls]
+    .sort(byDurationDesc)
+    .slice(0, HOTSPOT_LIMIT)
+    .map((m) => ({
+      id: m.id,
+      category: "model_call" as const,
+      label: `${m.provider}/${m.model}`,
+      subLabel: m.model,
+      durationMs: m.durationMs,
+      status: null,
+      detail: [
+        m.totalTokens != null ? `${m.totalTokens.toLocaleString()} tok` : null,
+        m.estimatedCostUsd ? formatCostUsd(m.estimatedCostUsd) : null,
+      ]
+        .filter(Boolean)
+        .join(" · "),
+    }));
+
+  const slowestTools: Hotspot[] = [...detail.toolCalls]
+    .sort(byDurationDesc)
+    .slice(0, HOTSPOT_LIMIT)
+    .map((t) => ({
+      id: t.id,
+      category: "tool_call" as const,
+      label: t.toolName,
+      subLabel: t.status,
+      durationMs: t.durationMs,
+      status: t.status,
+    }));
+
+  const errors: Hotspot[] = [];
+  for (const ev of detail.events) {
+    if (ev.type === "error" || ev.error != null) {
+      errors.push({
+        id: ev.id,
+        category: "event",
+        label: ev.name,
+        subLabel: ev.type,
+        durationMs: ev.durationMs,
+        status: "error",
+        detail: errorMessage(ev.error),
+      });
+    }
+  }
+  for (const t of detail.toolCalls) {
+    if (t.status === "error") {
+      errors.push({
+        id: t.id,
+        category: "tool_call",
+        label: t.toolName,
+        subLabel: "tool",
+        durationMs: t.durationMs,
+        status: "error",
+        detail: errorMessage(t.error),
+      });
+    }
+  }
+  for (const s of spans) {
+    if (s.status === "error") {
+      errors.push({
+        id: s.id,
+        category: "span",
+        label: s.name,
+        subLabel: s.kind,
+        durationMs: s.durationMs,
+        status: "error",
+      });
+    }
+  }
+
+  // Critical shortlist: errors first, then most expensive model call, then the
+  // slowest item overall — de-duplicated by id.
+  const critical: Hotspot[] = [];
+  const seen = new Set<string>();
+  const push = (h: Hotspot | undefined) => {
+    if (h && !seen.has(h.id)) {
+      seen.add(h.id);
+      critical.push(h);
+    }
+  };
+  errors.slice(0, 3).forEach(push);
+  const mostExpensive = [...detail.modelCalls]
+    .filter((m) => (m.estimatedCostUsd ?? 0) > 0)
+    .sort((a, b) => (b.estimatedCostUsd ?? 0) - (a.estimatedCostUsd ?? 0))[0];
+  if (mostExpensive) {
+    push({
+      id: mostExpensive.id,
+      category: "model_call",
+      label: `${mostExpensive.provider}/${mostExpensive.model}`,
+      subLabel: "most expensive",
+      durationMs: mostExpensive.durationMs,
+      status: null,
+      detail: formatCostUsd(mostExpensive.estimatedCostUsd),
+    });
+  }
+  const slowestOverall = [
+    ...slowestSpans,
+    ...slowestModelCalls,
+    ...slowestTools,
+  ].sort(byDurationDesc)[0];
+  push(slowestOverall);
+
+  const { totalTokens, estimatedCostUsd } = computeSummary(detail);
+
+  return {
+    slowestSpans,
+    slowestModelCalls,
+    slowestTools,
+    errors,
+    critical: critical.slice(0, HOTSPOT_LIMIT),
+    totalTokens,
+    estimatedCostUsd,
+  };
+}
+
+function errorMessage(error: unknown): string | undefined {
+  if (error == null) return undefined;
+  if (typeof error === "string") return error;
+  if (typeof error === "object") {
+    const e = error as { message?: unknown; name?: unknown };
+    if (typeof e.message === "string") return e.message;
+    if (typeof e.name === "string") return e.name;
+  }
+  return undefined;
 }

@@ -128,10 +128,99 @@ const INIT_DDL: string[] = [
   `CREATE INDEX IF NOT EXISTS "tool_calls_tool_name_idx" ON "tool_calls"("tool_name")`,
 ];
 
+// ── Migrations ────────────────────────────────────────────────────────────────
+//
+// Additive, idempotent migrations layered on top of the base tables above. Each
+// migration is recorded once in `schema_migrations`; re-running is a no-op. This
+// lets a `0.4.0`-era database (the five base tables, no `schema_migrations`)
+// upgrade in place without data loss and without destructive resets.
+//
+// Rules:
+//   - Migrations only ADD tables/columns/indexes; never drop or rewrite data.
+//   - Statements stay idempotent (`IF NOT EXISTS`) so a half-applied or
+//     manually-created schema still converges cleanly.
+
+interface Migration {
+  id: string;
+  statements: string[];
+}
+
+export const MIGRATIONS: Migration[] = [
+  {
+    // 0.65.0 — local Studio metadata: per-trace annotations and saved views.
+    id: "0001_studio_metadata",
+    statements: [
+      `CREATE TABLE IF NOT EXISTS "trace_annotations" (
+        "trace_id" text PRIMARY KEY NOT NULL REFERENCES "traces"("id") ON DELETE CASCADE,
+        "favorite" integer NOT NULL DEFAULT 0,
+        "note" text,
+        "tags" text,
+        "updated_at" integer NOT NULL
+      )`,
+      `CREATE INDEX IF NOT EXISTS "trace_annotations_favorite_idx" ON "trace_annotations"("favorite")`,
+      `CREATE TABLE IF NOT EXISTS "saved_views" (
+        "id" text PRIMARY KEY NOT NULL,
+        "name" text NOT NULL,
+        "filters_json" text,
+        "created_at" integer NOT NULL,
+        "updated_at" integer NOT NULL
+      )`,
+    ],
+  },
+];
+
+/**
+ * Bring a raw SQLite database up to the current schema.
+ *
+ * Idempotent: creates the base tables (if missing), ensures the
+ * `schema_migrations` ledger exists, then applies any migrations not yet
+ * recorded. Safe to call on an empty DB, a `0.4.0`-style DB, or an
+ * already-current DB. Exported so tests can drive it against their own
+ * connections without touching the process-wide singleton.
+ */
+export function applyMigrations(sqlite: Database.Database): void {
+  // Base tables — unchanged since 0.4.0, created with IF NOT EXISTS.
+  for (const stmt of INIT_DDL) {
+    sqlite.exec(stmt);
+  }
+
+  sqlite.exec(
+    `CREATE TABLE IF NOT EXISTS "schema_migrations" (
+      "id" text PRIMARY KEY NOT NULL,
+      "applied_at" integer NOT NULL
+    )`
+  );
+
+  const applied = new Set(
+    sqlite
+      .prepare(`SELECT id FROM "schema_migrations"`)
+      .all()
+      .map((row) => (row as { id: string }).id)
+  );
+
+  const record = sqlite.prepare(
+    `INSERT INTO "schema_migrations" ("id", "applied_at") VALUES (?, ?)`
+  );
+
+  for (const migration of MIGRATIONS) {
+    if (applied.has(migration.id)) continue;
+    const run = sqlite.transaction(() => {
+      for (const stmt of migration.statements) {
+        sqlite.exec(stmt);
+      }
+      record.run(migration.id, Date.now());
+    });
+    run();
+  }
+}
+
 // ── Connection ──────────────────────────────────────────────────────────────
 
 declare global {
-  // eslint-disable-next-line no-var
+  // Single process-wide Drizzle handle. `var` here is intentional: Node's
+  // `globalThis` only sees `var`-declared module bindings, and Next.js HMR
+  // recreates module instances per request — without this, every refresh
+  // would re-open SQLite and ignore WAL.
   var __db: BetterSQLite3Database<DatabaseSchema> | undefined;
 }
 
@@ -167,9 +256,7 @@ export function getDatabase(
   const db = drizzle(sqlite, { schema });
 
   if (shouldMigrate) {
-    for (const stmt of INIT_DDL) {
-      sqlite.exec(stmt);
-    }
+    applyMigrations(sqlite);
   }
 
   globalThis.__db = db;

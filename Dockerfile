@@ -11,7 +11,7 @@
 #
 # GHCR:
 #   ghcr.io/fabriutola-hub/steplens:latest
-#   ghcr.io/fabriutola-hub/steplens:0.4.0
+#   ghcr.io/fabriutola-hub/steplens:0.66.0
 
 # ── Builder ───────────────────────────────────────────────────────────────────
 # Full image so better-sqlite3 / sharp can compile if no prebuilt binary exists.
@@ -35,7 +35,7 @@ RUN pnpm --filter @agent-replay/core build \
 FROM node:22-bookworm-slim AS runner
 
 # OCI labels
-ARG VERSION=0.4.0
+ARG VERSION=0.66.0
 ARG COMMIT_SHA=unknown
 LABEL org.opencontainers.image.title="StepLens" \
       org.opencontainers.image.description="Local-first trace inspector for AI agents" \

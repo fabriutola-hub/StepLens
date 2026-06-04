@@ -3,6 +3,11 @@ import Link from "next/link";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Activity } from "lucide-react";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { Toaster } from "@/components/ui/toast";
+import { ConfirmDialogHost } from "@/components/ui/confirm-dialog";
+import { ShortcutsHelp } from "@/components/shortcuts-help";
+import { ThemeToggle } from "@/components/theme-toggle";
+import { THEME_INIT_SCRIPT } from "@/lib/theme";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -27,7 +32,16 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
+    <html
+      lang="en"
+      // suppressHydrationWarning lets the no-FOUC inline script mutate the
+      // `class` attribute before React hydrates, without React warning.
+      suppressHydrationWarning
+      className={`${geistSans.variable} ${geistMono.variable}`}
+    >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+      </head>
       <body className="min-h-screen bg-background font-sans antialiased">
         <TooltipProvider>
           <div className="flex min-h-screen flex-col">
@@ -49,11 +63,28 @@ export default function RootLayout({
                     Traces
                   </Link>
                 </div>
+                <div className="ml-auto flex items-center gap-1">
+                  <a
+                    href="https://github.com/fabriutola-hub/StepLens"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="rounded-md px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    title="View source on GitHub"
+                  >
+                    GitHub
+                  </a>
+                  <ThemeToggle />
+                </div>
               </div>
             </nav>
 
             {/* ── Content ──────────────────────────────────────────── */}
             {children}
+
+            {/* ── Global overlays ──────────────────────────────────── */}
+            <Toaster />
+            <ConfirmDialogHost />
+            <ShortcutsHelp />
           </div>
         </TooltipProvider>
       </body>

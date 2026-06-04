@@ -47,10 +47,10 @@ describe("agent-replay CLI", () => {
     }
   });
 
-  it("--version prints 0.4.0", async () => {
+  it("--version prints 0.66.0", async () => {
     const { code, stdout } = await runCli(["--version"]);
     expect(code).toBe(0);
-    expect(stdout.trim()).toBe("0.4.0");
+    expect(stdout.trim()).toBe("0.66.0");
   });
 
   it("doctor runs and reports a system check", async () => {

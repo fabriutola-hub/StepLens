@@ -1,20 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getTracesList } from "../../../lib/queries";
+import { parseTraceParams } from "../../../lib/parse-filters";
+import { internalError } from "../../../lib/http-errors";
 
 export async function GET(request: NextRequest) {
   try {
-    const searchParams = request.nextUrl.searchParams;
-    const limit = parseInt(searchParams.get("limit") || "20", 10);
-    const offset = parseInt(searchParams.get("offset") || "0", 10);
-    const status = searchParams.get("status") || undefined;
-
-    const result = await getTracesList({ limit, offset, status });
-
+    const params = parseTraceParams(request.nextUrl.searchParams);
+    const result = await getTracesList(params);
     return NextResponse.json(result);
-  } catch (error: any) {
-    return NextResponse.json(
-      { error: "Internal server error", details: error.message },
-      { status: 500 }
-    );
+  } catch (error: unknown) {
+    return internalError(error);
   }
 }

@@ -49,8 +49,14 @@ your agent ──(@agent-replay/sdk)──▶ HttpCollector
    `insertBatchEvents` writes rows. For model calls it **recomputes the cost
    server-side** from `(model, inputTokens, outputTokens)` so the stored value is
    authoritative.
-3. The UI polls `/api/traces` (list, with per-trace cost aggregated via `SUM`)
-   and `/api/traces/[id]` (full detail), and offers `/api/export/[id]`.
+3. The UI polls `/api/traces` (list + advanced filters, with per-trace cost
+   aggregated via `SUM`) and `/api/traces/[id]` (full detail), and offers
+   `/api/export/[id]`.
+4. The Studio Workbench (0.65) also calls `/api/traces/stats` (filtered
+   aggregates), `/api/traces/[id]/annotation` (local favorite/note/tags),
+   `/api/views` (saved filter sets), and `/api/compare` (two-trace deltas).
+   These are local Studio concerns — annotations and saved views never leave the
+   machine and are not part of trace exports.
 
 ## Data model
 
@@ -63,15 +69,22 @@ fields like `input`, `output`, `metadata`, `messages`, `attributes`, `error`):
 - `model_calls` — LLM calls with tokens and `estimated_cost_usd`.
 - `tool_calls` — tool/function executions with input/output and status.
 
+Two local-only tables (added in 0.65, never exported) hold Studio metadata:
+
+- `trace_annotations` — per-trace `favorite`, `note`, and `tags`.
+- `saved_views` — named, reusable workbench filter sets.
+
 Children reference `trace_id` with `ON DELETE CASCADE`, so deleting a trace
-removes everything under it.
+removes everything under it (including its annotation).
 
 ## Storage
 
 - Default path: `~/.agent-replay/studio.db` (created on first run).
 - SQLite with **WAL** mode, foreign keys on. Drizzle ORM is used for queries;
-  tables are created via idempotent `CREATE TABLE IF NOT EXISTS` DDL in
-  `apps/studio/src/db/connection.ts`.
+  base tables are created via idempotent `CREATE TABLE IF NOT EXISTS` DDL in
+  `apps/studio/src/db/connection.ts`. Additive changes ship as recorded,
+  idempotent migrations tracked in a `schema_migrations` table, so existing
+  databases upgrade in place without data loss.
 - To reset: delete `studio.db` (and its `-wal` / `-shm` siblings).
 
 ## Costs

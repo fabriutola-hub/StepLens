@@ -63,10 +63,12 @@ export function TraceGraph({ detail }: TraceGraphProps) {
     }, 50);
   }, []);
 
-  // Handle node clicks to populate the inspector
+  // Handle node clicks to populate the inspector. Graph nodes are built by
+  // `buildGraph()` and always carry an optional `timelineItem` — we only need
+  // to narrow that one field, not the whole node payload.
   const onNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
-      const d = node.data as any;
+      const d = node.data as { timelineItem?: Parameters<typeof select>[0] };
       if (d.timelineItem) {
         select(d.timelineItem);
       }

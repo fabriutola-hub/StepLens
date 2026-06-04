@@ -2,253 +2,287 @@
 
 [![CI](https://github.com/fabriutola-hub/StepLens/actions/workflows/ci.yml/badge.svg)](https://github.com/fabriutola-hub/StepLens/actions/workflows/ci.yml)
 [![Release](https://github.com/fabriutola-hub/StepLens/actions/workflows/release.yml/badge.svg)](https://github.com/fabriutola-hub/StepLens/actions/workflows/release.yml)
-![Version](https://img.shields.io/badge/version-0.4.0-blue.svg)
+![Version](https://img.shields.io/badge/version-0.66.0-blue.svg)
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)
-![Node](https://img.shields.io/badge/node-%E2%89%A518-brightgreen.svg)
+![Node](https://img.shields.io/badge/node-%3E%3D18-brightgreen.svg)
 
-**A local-first trace inspector for AI agents.** Record what your agent did —
-spans, model calls, tool calls, errors, tokens, and estimated cost — and explore
-it in a local web UI as a timeline, a graph, or step-by-step.
+**StepLens is a local-first trace inspector for AI agents.** It records what an
+agent did - spans, model calls, tool calls, errors, tokens, and estimated cost -
+then lets you inspect the run in a local Studio UI as a timeline, graph, event
+log, or step-by-step replay.
 
-Everything runs on your machine. No accounts, no cloud, no API keys. Traces are
-stored in a local SQLite file (`~/.agent-replay/studio.db`).
+No accounts, hosted service, or vendor lock-in are required. Studio runs on your
+machine and stores traces in a local SQLite database at
+`~/.agent-replay/studio.db`.
 
-> **What "replay" means here:** stepping through a recorded trace event-by-event
-> (play / pause / step / seek) to see what happened. It is **not** deterministic
-> re-execution of your agent.
+> **Replay means inspection playback.** StepLens can play, pause, step, and seek
+> through a recorded trace. It does not deterministically re-run your agent.
 
 ![Trace detail with timeline and replay](docs/images/trace-detail.png)
 
----
-
 ## Quickstart
 
-**install → start Studio → demo → see trace.** Requirements: **Node.js ≥ 18**.
+Requirements: **Node.js >= 18**.
+
+Start Studio, record the bundled demo traces, then open the UI:
 
 ```bash
-npx steplens dev          # 1. start Studio → http://localhost:3000  (leave running)
-npx steplens demo         # 2. (new terminal) record 3 example traces
+npx steplens dev
+npx steplens demo
 ```
 
-Now open **http://localhost:3000** — the traces appear and the list
-auto-refreshes. Click one to explore it.
+Studio runs at [http://localhost:3000](http://localhost:3000). Leave
+`npx steplens dev` running in one terminal and run `npx steplens demo` from
+another terminal.
 
 | Trace list | Graph view |
 | --- | --- |
 | ![Trace list](docs/images/trace-list.png) | ![Trace graph](docs/images/trace-graph.png) |
 
-Want your own first trace? Scaffold and run an example:
+Generate your own minimal example:
 
 ```bash
-npx steplens new simple         # writes steplens-example.mjs
-node steplens-example.mjs       # records a "Simple Agent" trace
+npx steplens new simple
+node steplens-example.mjs
 ```
 
-> **Developing StepLens itself?** Clone the repo and use `pnpm install && pnpm build`,
-> then `pnpm dev` to start Studio from source.
+Developing this repository from source:
 
----
+```bash
+pnpm install
+pnpm build
+pnpm dev
+```
 
-## Record from your own agent
+## What StepLens Records
 
-The simplest way (recommended) is the `@agent-replay/sdk/simple` API:
+- Trace lifecycle: start, end, status, input, output, metadata, and errors.
+- Nested spans: agent steps, retrieval, parsing, custom work, and child spans.
+- Model calls: provider, model, messages, responses, token usage, latency, and
+  estimated cost when pricing data is known.
+- Tool calls: tool name, input, output, status, and timing.
+- Logs and replay events for step-by-step inspection in Studio.
+
+Cost values are estimates in US dollars. Pricing comes from a static table in
+`@agent-replay/core`, so treat it as observability context, not billing data.
+
+## Record From Your Agent
+
+The simplest API is `@agent-replay/sdk/simple`:
 
 ```ts
 import { createReplay } from "@agent-replay/sdk/simple";
 
-// Defaults to http://localhost:3000; reads AGENT_REPLAY_ENDPOINT / AGENT_REPLAY_ENABLED.
-const replay = createReplay();
+const replay = createReplay(); // Defaults to http://localhost:3000
 
-await replay.record("My Agent", async (run) => {
+await replay.record("Docs Agent", async (run) => {
   const docs = await run.step("Search docs", async () => searchDocs());
 
   const answer = await run.model(
     "openai:gpt-4o",
     { messages: [{ role: "user", content: "Summarize the docs" }] },
-    async () => callModel(docs), // return { response, inputTokens, outputTokens }
+    async () => callModel(docs),
   );
+
+  await run.tool("save-answer", { id: "summary" }, async () => {
+    return saveAnswer(answer.response);
+  });
 
   return answer.response;
 });
 
-await replay.shutdown(); // flush before exit
+await replay.shutdown(); // Flush before process exit
 ```
 
-- `run.step(name, fn)` — an auto-managed span (nests naturally).
-- `run.tool(name, input, fn)` — records a tool call's input/output.
-- `run.model("provider:model", opts, fn)` — records a model call + estimated cost.
-
-Using a real LLM stack? Wrap your client/functions once and calls made inside
-`record()` are captured automatically — spans, model calls, tool calls,
-completed streams, tokens, and estimated cost:
+Using a provider or framework client? Wrap it once and calls made inside
+`record()` are captured automatically:
 
 ```ts
+import OpenAI from "openai";
+import { createReplay } from "@agent-replay/sdk/simple";
 import { wrapOpenAI } from "@agent-replay/sdk/integrations/openai";
+
+const replay = createReplay();
 const openai = wrapOpenAI(new OpenAI(), { replay });
 ```
 
-### Integrations
+## Integrations
 
-| Integration | Import | Wrap | Streaming | Template |
-| ----------- | ------ | ---- | --------- | -------- |
-| **OpenAI** | `@agent-replay/sdk/integrations/openai` | `wrapOpenAI(client)` | `stream: true` (recorded when fully consumed) | `steplens new openai` |
-| **Vercel AI SDK** | `@agent-replay/sdk/integrations/vercel-ai` | `wrapAISDK({ generateText, streamText, … })` | `streamText` / `streamObject` via `onFinish` | `steplens new vercel-ai` |
-| **Anthropic** | `@agent-replay/sdk/integrations/anthropic` | `wrapAnthropic(client)` | `messages.stream(…).finalMessage()` | `steplens new anthropic` |
-| **Google Gemini** | `@agent-replay/sdk/integrations/google` | `wrapGoogleGenAI(client)` | `generateContentStream` (recorded when fully consumed) | `steplens new google` |
-| **LangChain / LangGraph** | `@agent-replay/sdk/integrations/langchain` | `createLangChainCallbackHandler()` | via LangChain callbacks | `steplens new langchain` |
-| **Ollama** | — (use `run.model("ollama:…")`) | — | — | `steplens new ollama` |
+StepLens integrations use structural types. The SDK does not add hard runtime
+dependencies on `openai`, `ai`, `@anthropic-ai/sdk`, `@google/genai`, or
+`@langchain/*`; you pass in the real client or functions you already use.
 
-All integrations use **structural types only** — none of `openai`, `ai`,
-`@anthropic-ai/sdk`, `@google/genai`, or `@langchain/*` are dependencies of the
-SDK. You pass in your real client/functions; outside `record()` everything
-passes through untouched, and **streams are never consumed on your behalf**.
+| Stack | Import | Wrapper | Template |
+| --- | --- | --- | --- |
+| OpenAI | `@agent-replay/sdk/integrations/openai` | `wrapOpenAI(client)` | `steplens new openai` |
+| Vercel AI SDK | `@agent-replay/sdk/integrations/vercel-ai` | `wrapAISDK({ generateText, streamText, ... })` | `steplens new vercel-ai` |
+| Anthropic | `@agent-replay/sdk/integrations/anthropic` | `wrapAnthropic(client)` | `steplens new anthropic` |
+| Google Gemini | `@agent-replay/sdk/integrations/google` | `wrapGoogleGenAI(client)` | `steplens new google` |
+| LangChain / LangGraph | `@agent-replay/sdk/integrations/langchain` | `createLangChainCallbackHandler()` | `steplens new langchain` |
+| Ollama | Use `run.model("ollama:model", ...)` | Manual/simple API | `steplens new ollama` |
 
-A LangChain agent recorded with `createLangChainCallbackHandler()` — spans,
-model calls, tool calls, tokens, and estimated cost:
+Streaming calls are recorded when the stream is consumed to completion. StepLens
+does not drain streams on your behalf.
 
 ![LangChain trace in StepLens](docs/images/trace-langchain.png)
 
-The lower-level `createClient` / `Trace` / `Span` API is still fully supported.
-Full details in [`docs/sdk.md`](docs/sdk.md).
+See [docs/sdk.md](docs/sdk.md) for the full SDK reference.
 
----
+## CLI
+
+The published command is `steplens`. The older `agent-replay` binary remains
+available for backward compatibility.
+
+| Command | Description |
+| --- | --- |
+| `steplens dev` | Start Studio and open the browser |
+| `steplens demo` | Record three bundled example traces |
+| `steplens new [template]` | Scaffold a runnable example file |
+| `steplens status` | Check whether Studio is reachable |
+| `steplens open` | Open Studio in the default browser |
+| `steplens doctor` | Check Node, SQLite, pnpm in monorepo mode, and Studio reachability |
+| `steplens init` | Create a `.env` with SDK recording variables |
+| `steplens record -- <cmd>` | Run a command with StepLens environment variables |
+| `steplens export <traceId>` | Export a trace to JSON |
+| `steplens import <file>` | Import a trace JSON file into Studio |
+| `steplens otel export` | Convert a trace to OTLP/HTTP JSON |
+| `steplens otel send` | Send a trace to an OTLP collector |
+
+Run `npx steplens <command> --help` for command-specific options.
 
 ## OpenTelemetry Bridge
 
-Export any StepLens trace to **OTLP/HTTP JSON** and send it to your favorite
-observability backend (Jaeger, Grafana Tempo, Datadog, etc.).
+StepLens can export traces as OTLP/HTTP JSON for observability tools such as
+Jaeger, Grafana Tempo, Datadog, and compatible collectors.
 
 ```bash
-# Export a trace as OTLP JSON
 npx steplens otel export <traceId> --out trace-otlp.json
-
-# Send a trace directly to an OTLP collector
 npx steplens otel send <traceId> --otlp-endpoint http://localhost:4318/v1/traces
-
-# Export from a local file instead of Studio
 npx steplens otel export --file trace.json --out trace-otlp.json
 ```
 
-The bridge uses **deterministic IDs** (SHA-256 hashes), maps StepLens spans,
-model calls, and tool calls to OTel spans with **GenAI semantic conventions**
-(`gen_ai.system`, `gen_ai.request.model`, token usage, estimated cost), and
-**excludes prompts/responses by default** — use `--include-content` to opt in.
+The bridge maps StepLens spans, model calls, and tool calls to OTel spans with
+GenAI semantic attributes. Prompts, responses, and tool payloads are excluded by
+default; pass `--include-content` when you explicitly want to include them.
 
-Endpoint resolution order:
-1. `--otlp-endpoint` flag
-2. `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` env var
-3. `OTEL_EXPORTER_OTLP_ENDPOINT` + `/v1/traces`
-4. Fallback: `http://localhost:4318/v1/traces`
-
-Programmatic API via `@agent-replay/otel`:
+Programmatic API:
 
 ```ts
-import { toOtlpTrace, sendOtlpTrace } from "@agent-replay/otel";
+import { sendOtlpTrace, toOtlpTrace } from "@agent-replay/otel";
 
-const otlpPayload = toOtlpTrace(traceExport);
-await sendOtlpTrace(traceExport, { otlpEndpoint: "http://localhost:4318/v1/traces" });
+const payload = toOtlpTrace(traceExport);
+await sendOtlpTrace(traceExport, {
+  otlpEndpoint: "http://localhost:4318/v1/traces",
+});
 ```
 
----
+## Docker
 
-## Run Studio with Docker
-
-Use the pre-built image from GitHub Container Registry:
+Run the published image from GitHub Container Registry:
 
 ```bash
 docker run --rm -p 3000:3000 -v steplens-data:/data ghcr.io/fabriutola-hub/steplens:latest
 ```
 
-Or build from source:
+Or build locally:
 
 ```bash
 docker build -t steplens .
 docker run --rm -p 3000:3000 -v steplens-data:/data steplens
 ```
 
-Then point the SDK/CLI at `http://localhost:3000` as usual. The volume persists
-the local SQLite database across runs.
+Then point the SDK or CLI at `http://localhost:3000`. The mounted volume keeps
+the SQLite data across container runs.
 
----
+The container exposes a lightweight **health endpoint** at `/api/health` —
+return code is `200` when SQLite is reachable, `503` otherwise. It's safe to
+use as a Docker `HEALTHCHECK` or a Kubernetes readiness probe.
 
-## CLI Reference
+```bash
+curl -s http://localhost:3000/api/health | jq
+# {
+#   "status": "ok",
+#   "service": "steplens-studio",
+#   "version": "0.66.0",
+#   "uptimeMs": 12345,
+#   "startedAt": 1717549200000,
+#   "db": { "connected": true, "traceCount": 42 }
+# }
+```
 
-The `steplens` CLI (also available as `agent-replay` for backward compatibility):
+## Keyboard Shortcuts
 
-| Command | Description |
-| ------- | ----------- |
-| `steplens dev` | Start Studio server and open browser |
-| `steplens demo` | Record 3 example agent traces |
-| `steplens new [template]` | Scaffold a runnable example file |
-| `steplens status` | Check if Studio is alive |
-| `steplens open` | Open Studio in the default browser |
-| `steplens doctor` | Check system requirements |
-| `steplens init` | Create a `.env` with SDK variables |
-| `steplens record -- <cmd>` | Run a command with recording enabled |
-| `steplens export <traceId>` | Export a trace to JSON |
-| `steplens import <file>` | Import a trace from JSON |
-| `steplens otel export` | Export a trace as OTLP JSON |
-| `steplens otel send` | Send a trace to an OTLP collector |
+Studio is fully keyboard-driven. Press `?` anywhere to see the live list of
+shortcuts the current page exposes.
 
-Use `npx steplens <command> --help` for detailed options.
+| Where | Key | Action |
+| --- | --- | --- |
+| Anywhere | `?` | Open / close shortcut help |
+| Anywhere | `Esc` | Close help overlay |
+| Workbench | `/` | Focus search |
+| Workbench | `e` | Export filtered list as CSV |
+| Workbench | `r` | Reload list |
+| Workbench | `c` | Clear all filters |
+| Trace detail | `b` | Back to trace list |
+| Trace detail | `s` / `t` / `g` / `v` / `d` | Switch to Summary / Timeline / Graph / Events / Data tab |
+| Trace detail | `f` | Toggle favorite |
 
----
+Shortcuts are suppressed while you type in any text field except `/`, so the
+search box behaves naturally.
 
-## What's in the box
+## Theme
+
+A three-way theme switch (light / dark / system) lives in the top nav. Your
+choice is persisted to `localStorage` and the correct theme is applied before
+the first paint — no flash of the wrong colors on reload.
+
+## Repository Layout
 
 | Package | Description |
-| ------- | ----------- |
-| [`steplens`](packages/steplens) | Public npm package — install and run with `npx steplens` |
-| [`@agent-replay/sdk`](packages/sdk) | Recording client — simple API (`createReplay`), core API (`createClient`), integrations |
-| [`@agent-replay/core`](packages/core) | Shared types, Zod schemas, and (static) model cost lookup |
-| [`@agent-replay/cli`](packages/cli) | The CLI (`steplens` / `agent-replay` commands) |
-| [`@agent-replay/otel`](packages/otel) | OpenTelemetry bridge — convert and export traces to OTLP/HTTP JSON |
-| `@agent-replay/studio` | The Next.js UI + ingest/query/import API (runs at `localhost:3000`) |
-| `@agent-replay/examples` | Demo agents used by `steplens demo` (bundled into the CLI) |
+| --- | --- |
+| [`steplens`](packages/steplens) | Public npm entrypoint for `npx steplens` |
+| [`@agent-replay/sdk`](packages/sdk) | Recording SDK, simple API, core API, and integrations |
+| [`@agent-replay/core`](packages/core) | Shared types, schemas, normalization, and model cost lookup |
+| [`@agent-replay/cli`](packages/cli) | CLI implementation for `steplens` and `agent-replay` |
+| [`@agent-replay/otel`](packages/otel) | OpenTelemetry conversion and OTLP sender |
+| [`@agent-replay/studio`](apps/studio) | Next.js Studio UI and ingest/query/import/export API |
+| [`@agent-replay/examples`](packages/examples) | Demo agents bundled into the CLI |
 
-See [`docs/architecture.md`](docs/architecture.md) for how data flows.
-
----
+See [docs/architecture.md](docs/architecture.md) for the data flow and package
+boundaries.
 
 ## Documentation
 
-- [Quickstart](docs/quickstart.md) — install → first trace, in detail
-- [SDK](docs/sdk.md) — simple API, core API, env vars, integrations
-- [CLI](docs/cli.md) — every command, with examples
-- [Architecture](docs/architecture.md) — packages, data model, costs, storage
-- [Comparison](docs/comparison.md) — vs LangSmith, Helicone, OpenTelemetry
+- [Quickstart](docs/quickstart.md)
+- [SDK reference](docs/sdk.md)
+- [CLI reference](docs/cli.md)
+- [Architecture](docs/architecture.md)
+- [Comparison](docs/comparison.md)
 - [Roadmap](ROADMAP.md)
+- [Security policy](SECURITY.md)
 
----
+## Security
 
-## Costs and tokens
+StepLens is designed for local development. Studio has no authentication or
+authorization, and the ingest API accepts local unauthenticated writes by
+design. Do not expose Studio to an untrusted network unless you put your own
+authentication and TLS in front of it.
 
-Studio shows **estimated** cost in **US dollars** (e.g. `$0.0075`), labeled
-"Est.". Pricing comes from a **static, hand-maintained table** in
-`@agent-replay/core` and will drift as providers change prices — treat costs as
-rough estimates, not billing figures. Unknown models simply show no cost.
+Trace data can include prompts, model responses, tool inputs, tool outputs, and
+other sensitive application data. It is stored locally in plaintext SQLite.
 
----
+## Project Status
 
-## Troubleshooting
+Current version: **0.66.0**.
 
-| Symptom | Fix |
-| ------- | --- |
-| `steplens demo` says "Studio is not reachable" | Start Studio first: `npx steplens dev`. Confirm it's at `http://localhost:3000`. |
-| Port 3000 in use | Use `npx steplens dev -p 3001` and pass `-e http://localhost:3001` to CLI commands. |
-| No traces appear | The list auto-refreshes every few seconds. Make sure your SDK client points at the same endpoint and that you call `await replay.shutdown()` before exit. |
-| Not sure your setup is healthy | Run `npx steplens doctor`. |
-| Want a clean slate | Delete `~/.agent-replay/studio.db` (and `-wal`/`-shm` files). |
+StepLens is installable from npm, can run Studio locally, includes SDK
+integrations for common LLM stacks, ships Docker support, and can export traces
+to OpenTelemetry. The `0.66` Polish release rounds off the Workbench with
+keyboard shortcuts, a dark-mode toggle, a `/api/health` probe, CSV export of
+filtered traces, toast notifications, and a confirm-before-delete dialog. The
+Studio codebase is now lint-clean under Next 16 / React 19 strict rules. All
+still local-first, with no cloud, accounts, or production-monitoring scope.
+APIs may still evolve before `1.0`.
 
----
-
-## Project status
-
-**v0.4.0** — installable CLI, standalone Studio from npm, versioned Docker
-images on GHCR, and OpenTelemetry bridge. It is **local-first** and
-intentionally has **no authentication, accounts, or cloud** — do not expose it
-to an untrusted network (see [`SECURITY.md`](SECURITY.md)). APIs may still
-evolve before `1.0`.
-
-Contributions welcome — see [`CONTRIBUTING.md`](CONTRIBUTING.md). Licensed under
-[MIT](LICENSE).
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md). StepLens is
+licensed under the [MIT License](LICENSE).

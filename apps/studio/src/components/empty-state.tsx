@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import { Terminal, Loader2 } from "lucide-react";
 import {
   Card,
@@ -20,12 +20,22 @@ await replay.run("my-agent", async (trace) => {
 });
 await replay.shutdown(); // flush before exit`;
 
+const DEFAULT_INGEST_URL = "http://localhost:3000/api/ingest";
+
+// `useSyncExternalStore` lets us read `window.location.origin` after hydration
+// without violating React 19's "no setState inside an effect" rule. The server
+// snapshot keeps the markup deterministic; the client snapshot picks up the
+// real origin so a Studio behind a proxy shows the correct URL.
+const subscribe = () => () => {};
+const getOriginSnapshot = () => `${window.location.origin}/api/ingest`;
+const getServerSnapshot = () => DEFAULT_INGEST_URL;
+
 export function EmptyState() {
-  // Show the real origin Studio is served from (client-only).
-  const [ingestUrl, setIngestUrl] = useState("http://localhost:3000/api/ingest");
-  useEffect(() => {
-    setIngestUrl(`${window.location.origin}/api/ingest`);
-  }, []);
+  const ingestUrl = useSyncExternalStore(
+    subscribe,
+    getOriginSnapshot,
+    getServerSnapshot
+  );
 
   return (
     <div className="flex flex-1 items-center justify-center py-16">
@@ -51,7 +61,7 @@ export function EmptyState() {
               From the repo, with Studio running:
             </p>
             <pre className="overflow-x-auto rounded-md bg-muted p-3 text-xs">
-              <code>pnpm agent-replay demo</code>
+              <code>npx steplens demo</code>
             </pre>
           </div>
 

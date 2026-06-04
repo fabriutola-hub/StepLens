@@ -36,16 +36,42 @@ Feedback and contributions are welcome (see [`CONTRIBUTING.md`](CONTRIBUTING.md)
   on `recordModelCall` (backward compatible).
 - **More templates** — `agent-replay new vercel-ai|anthropic|google|langchain`.
 
-## 0.4 — Packaging & distribution
+## ✅ 0.4 — Packaging & distribution
 
 - Published, versioned Docker image.
-- `npx agent-replay` standalone runner (Studio without the monorepo).
-- Prebuilt binaries / smoother global install.
-- Optional OpenTelemetry export bridge.
+- `npx steplens` standalone runner (Studio without the monorepo).
+- Smoother global install.
+- OpenTelemetry export bridge.
+
+## ✅ 0.65 — Studio Workbench
+
+- **Advanced search & filtering** — query, status, time range, model, tool,
+  errors, favorites, and tags, with sortable columns.
+- **Filtered stats strip** — counts, p95/avg duration, tokens, cost, error rate.
+- **Local annotations** — favorites, tags, and notes (Studio-only, not exported).
+- **Saved views** — name and reuse a workbench filter set.
+- **Trace comparison** — side-by-side deltas for duration, cost, tokens, errors,
+  models, tools, and matched spans.
+- **Summary & hotspots** — slowest spans/models/tools and errors in the detail
+  view, with click-to-select into the timeline.
+- **Additive migrations** — `schema_migrations` upgrades older DBs in place.
+
+## ✅ 0.66 — Studio Polish (this release)
+
+- **Keyboard-first UI** — page-aware shortcuts (`/`, `e`, `r`, `c`, `b`,
+  `s`/`t`/`g`/`v`/`d`, `f`) and a `?` help overlay.
+- **Dark mode** — light/dark/system toggle, FOUC-free initial paint,
+  persisted to `localStorage`.
+- **Health endpoint** — `GET /api/health` for Docker `HEALTHCHECK` /
+  Kubernetes readiness probes.
+- **CSV export** of the filtered Workbench list (RFC 4180, UTF-8 BOM).
+- **Toasts + confirm-before-delete** — destructive actions now ask first
+  and report back.
+- **Lint-clean Studio** — 27 → 0 errors under Next 16 / React 19 strict
+  rules (no `any` in route handlers, no setState-in-effect anywhere).
 
 ## Later / under consideration
 
-- Diffing two traces side by side.
 - Lightweight evals over recorded traces.
 - Pluggable storage backends beyond SQLite.
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getTraceDetail, deleteTrace } from "../../../../lib/queries";
+import { internalError } from "../../../../lib/http-errors";
 
 export async function GET(
   request: NextRequest,
@@ -14,11 +15,8 @@ export async function GET(
     }
 
     return NextResponse.json(detail);
-  } catch (error: any) {
-    return NextResponse.json(
-      { error: "Internal server error", details: error.message },
-      { status: 500 }
-    );
+  } catch (error: unknown) {
+    return internalError(error);
   }
 }
 
@@ -35,10 +33,7 @@ export async function DELETE(
     }
 
     return NextResponse.json({ ok: true, traceId });
-  } catch (error: any) {
-    return NextResponse.json(
-      { error: "Internal server error", details: error.message },
-      { status: 500 }
-    );
+  } catch (error: unknown) {
+    return internalError(error);
   }
 }

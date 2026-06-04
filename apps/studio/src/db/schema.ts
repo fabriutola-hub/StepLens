@@ -169,3 +169,33 @@ export const toolCalls = sqliteTable(
     index("tool_calls_tool_name_idx").on(table.toolName),
   ]
 );
+
+// ── Trace Annotations (local Studio metadata) ─────────────────────────────────
+//
+// Per-trace, machine-local metadata that is NOT part of the recorded trace and
+// is never written by the ingest API or included in exports. One row per trace.
+export const traceAnnotations = sqliteTable(
+  "trace_annotations",
+  {
+    traceId: text("trace_id")
+      .primaryKey()
+      .references(() => traces.id, { onDelete: "cascade" }),
+    favorite: integer("favorite", { mode: "boolean" }).notNull().default(false),
+    note: text("note"),
+    tags: text("tags", { mode: "json" }).$type<string[]>(),
+    updatedAt: integer("updated_at", { mode: "number" }).notNull(),
+  },
+  (table) => [index("trace_annotations_favorite_idx").on(table.favorite)]
+);
+
+// ── Saved Views ───────────────────────────────────────────────────────────────
+//
+// Named, reusable workbench filter sets. `filtersJson` stores the same filter
+// object the workbench sends to /api/traces (q, status, model, tool, …).
+export const savedViews = sqliteTable("saved_views", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  filtersJson: text("filters_json", { mode: "json" }).$type<Record<string, unknown>>(),
+  createdAt: integer("created_at", { mode: "number" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "number" }).notNull(),
+});

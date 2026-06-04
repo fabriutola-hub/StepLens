@@ -1,133 +1,200 @@
 /**
- * API client for StepLens.
- * Calls internal Next.js API routes (same origin, no CORS needed).
+ * Single API client for StepLens Studio.
+ *
+ * Calls the internal Next.js API routes (same origin, no CORS). This is the one
+ * client list/detail/stats/annotations/saved-views/compare all share, built on
+ * the contracts in `./trace-types`.
  */
+
+import type {
+  Annotation,
+  AnnotationInput,
+  CompareResult,
+  SavedView,
+  TraceDetail,
+  TraceFilters,
+  TraceListParams,
+  TraceListResponse,
+  TraceStats,
+} from "./trace-types";
+
+// Re-export the shared contracts so existing imports from "@/lib/api" keep working.
+export type {
+  Annotation,
+  AnnotationInput,
+  CompareCountDelta,
+  CompareDeltas,
+  CompareResult,
+  CompareSpanDelta,
+  CompareTraceMeta,
+  CompareTraceSummary,
+  EventRow,
+  ModelCallRow,
+  SavedView,
+  SortOrder,
+  SpanKind,
+  SpanRow,
+  SpanStatus,
+  ToolCallRow,
+  ToolCallStatus,
+  TraceDetail,
+  TraceFilters,
+  TraceListItem,
+  TraceListParams,
+  TraceListResponse,
+  TraceRow,
+  TraceSortField,
+  TraceStats,
+  TraceStatus,
+} from "./trace-types";
 
 const API_BASE = "";
 
-// ── Types ───────────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-export interface TraceRow {
-  id: string;
-  name: string;
-  status: "running" | "success" | "error" | "cancelled";
-  startedAt: number;
-  endedAt: number | null;
-  durationMs: number | null;
-  estimatedCostUsd?: number;
-  input?: unknown;
-  output?: unknown;
-  metadata?: Record<string, unknown> | null;
+async function getJson<T>(url: string): Promise<T> {
+  const res = await fetch(`${API_BASE}${url}`);
+  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  return res.json() as Promise<T>;
 }
 
-export interface EventRow {
-  id: string;
-  traceId: string;
-  parentId: string | null;
-  type: string;
-  name: string;
-  timestamp: number;
-  durationMs: number | null;
-  input: unknown;
-  output: unknown;
-  error: unknown;
-  metadata: Record<string, unknown> | null;
+/** Serialize filters + paging into a query string for /api/traces and /stats. */
+export function buildTraceQuery(params: TraceListParams): string {
+  const search = new URLSearchParams();
+  if (params.limit != null) search.set("limit", String(params.limit));
+  if (params.offset != null) search.set("offset", String(params.offset));
+  if (params.sort) search.set("sort", params.sort);
+  if (params.order) search.set("order", params.order);
+  if (params.q) search.set("q", params.q);
+  if (params.status) search.set("status", params.status);
+  if (params.from != null) search.set("from", String(params.from));
+  if (params.to != null) search.set("to", String(params.to));
+  if (params.model) search.set("model", params.model);
+  if (params.tool) search.set("tool", params.tool);
+  if (params.hasError) search.set("hasError", "true");
+  if (params.favorite) search.set("favorite", "true");
+  if (params.tag) search.set("tag", params.tag);
+  return search.toString();
 }
 
-export interface SpanRow {
-  id: string;
-  traceId: string;
-  parentId: string | null;
-  name: string;
-  kind: "agent" | "model" | "tool" | "retrieval" | "parser" | "custom";
-  status: "running" | "success" | "error";
-  startedAt: number;
-  endedAt: number | null;
-  durationMs: number | null;
-  attributes: Record<string, unknown> | null;
-  children?: any[];
-}
-
-export interface ModelCallRow {
-  id: string;
-  traceId: string;
-  spanId: string | null;
-  provider: string;
-  model: string;
-  prompt: string | null;
-  messages: unknown;
-  response: string | null;
-  inputTokens: number | null;
-  outputTokens: number | null;
-  totalTokens: number | null;
-  estimatedCostUsd: number | null;
-  startedAt: number;
-  endedAt: number | null;
-  durationMs: number | null;
-  metadata: Record<string, unknown> | null;
-}
-
-export interface ToolCallRow {
-  id: string;
-  traceId: string;
-  spanId: string | null;
-  toolName: string;
-  input: unknown;
-  output: unknown;
-  status: "running" | "success" | "error";
-  startedAt: number;
-  endedAt: number | null;
-  durationMs: number | null;
-  error: unknown;
-  metadata: Record<string, unknown> | null;
-}
-
-export interface TraceDetail {
-  trace: TraceRow;
-  events: EventRow[];
-  spans: SpanRow[];
-  modelCalls: ModelCallRow[];
-  toolCalls: ToolCallRow[];
-}
-
-export interface PaginatedResponse<T> {
-  data: T[];
-  total: number;
-}
-
-// ── API Functions ───────────────────────────────────────────────────────────
-
-export interface ListTracesParams {
-  limit?: number;
-  offset?: number;
-  status?: string;
-  name?: string;
-}
+// ── Traces ────────────────────────────────────────────────────────────────────
 
 export async function listTraces(
-  params: ListTracesParams = {}
-): Promise<PaginatedResponse<TraceRow>> {
-  const search = new URLSearchParams();
-  if (params.limit) search.set("limit", String(params.limit));
-  if (params.offset) search.set("offset", String(params.offset));
-  if (params.status) search.set("status", params.status);
-  if (params.name) search.set("name", params.name);
+  params: TraceListParams = {}
+): Promise<TraceListResponse> {
+  const qs = buildTraceQuery(params);
+  return getJson<TraceListResponse>(`/api/traces?${qs}`);
+}
 
-  const res = await fetch(`${API_BASE}/api/traces?${search}`);
-  if (!res.ok) throw new Error(`API error: ${res.status}`);
-  const json = await res.json();
-  // Normalize the response shape: API returns { traces, total }
-  return { data: json.traces ?? [], total: json.total ?? 0 };
+export async function getTraceStats(
+  filters: TraceFilters = {}
+): Promise<TraceStats> {
+  const qs = buildTraceQuery(filters);
+  return getJson<TraceStats>(`/api/traces/stats?${qs}`);
 }
 
 export async function getTrace(id: string): Promise<TraceDetail> {
-  const res = await fetch(`${API_BASE}/api/traces/${id}`);
-  if (!res.ok) throw new Error(`API error: ${res.status}`);
-  // API returns { trace, events, spans, modelCalls, toolCalls }
-  return res.json();
+  return getJson<TraceDetail>(`/api/traces/${id}`);
 }
 
 export async function deleteTrace(id: string): Promise<void> {
   const res = await fetch(`${API_BASE}/api/traces/${id}`, { method: "DELETE" });
   if (!res.ok) throw new Error(`API error: ${res.status}`);
+}
+
+export async function exportTrace(
+  traceId: string,
+  traceName = "trace"
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/export/${traceId}`);
+  if (!res.ok) throw new Error(`API error: ${res.status}`);
+
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${traceName.replace(/\s+/g, "_")}-${traceId}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// ── Annotations ─────────────────────────────────────────────────────────────
+
+export async function getAnnotation(traceId: string): Promise<Annotation | null> {
+  const res = await fetch(`${API_BASE}/api/traces/${traceId}/annotation`);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  const json = await res.json();
+  return (json.annotation ?? null) as Annotation | null;
+}
+
+export async function updateAnnotation(
+  traceId: string,
+  input: AnnotationInput
+): Promise<Annotation> {
+  const res = await fetch(`${API_BASE}/api/traces/${traceId}/annotation`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  const json = await res.json();
+  return json.annotation as Annotation;
+}
+
+// ── Saved views ───────────────────────────────────────────────────────────────
+
+export async function listSavedViews(): Promise<SavedView[]> {
+  const json = await getJson<{ views: SavedView[] }>(`/api/views`);
+  return json.views ?? [];
+}
+
+export async function createSavedView(
+  name: string,
+  filters: TraceFilters
+): Promise<SavedView> {
+  const res = await fetch(`${API_BASE}/api/views`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, filters }),
+  });
+  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  const json = await res.json();
+  return json.view as SavedView;
+}
+
+export async function deleteSavedView(id: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/views/${id}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(`API error: ${res.status}`);
+}
+
+// ── Compare ───────────────────────────────────────────────────────────────────
+
+export async function compareTraces(
+  left: string,
+  right: string
+): Promise<CompareResult> {
+  const search = new URLSearchParams({ left, right });
+  return getJson<CompareResult>(`/api/compare?${search}`);
+}
+
+// ── Ingest (used by tests / programmatic clients) ───────────────────────────
+
+export interface IngestEvent {
+  kind: string;
+  data: Record<string, unknown>;
+}
+
+export async function ingestEvents(
+  events: IngestEvent[]
+): Promise<{ accepted: string[]; errors: { index: number; message: string }[] }> {
+  const res = await fetch(`${API_BASE}/api/events`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ events }),
+  });
+  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  return res.json();
 }

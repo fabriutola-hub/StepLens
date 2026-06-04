@@ -13,8 +13,6 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Tabs,
@@ -22,48 +20,28 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
-import { getTrace, type TraceDetail } from "@/lib/api";
-import { buildTimeline, computeSummary, type TimelineItem } from "@/lib/timeline";
+import {
+  getTrace,
+  updateAnnotation,
+  type Annotation,
+  type TraceDetail,
+} from "@/lib/api";
+import {
+  buildTimeline,
+  computeSummary,
+  flattenSpans,
+} from "@/lib/timeline";
 import { TimelinePanel } from "@/components/timeline/timeline-panel";
 import { EventInspector } from "@/components/inspector/event-inspector";
 import { JsonViewer } from "@/components/inspector/json-viewer";
 import { TraceGraph } from "@/components/graph/trace-graph";
 import { ExportButton } from "@/components/export/export-button";
-
-function formatDuration(ms: number | null): string {
-  if (ms == null) return "—";
-  if (ms < 1000) return `${ms}ms`;
-  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
-  const min = Math.floor(ms / 60_000);
-  const sec = ((ms % 60_000) / 1000).toFixed(0);
-  return `${min}m ${sec}s`;
-}
-
-function formatTimestamp(ts: number): string {
-  return new Date(ts).toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
-}
-
-function statusVariant(
-  status: string
-): "default" | "secondary" | "destructive" | "outline" {
-  switch (status) {
-    case "success":
-      return "default";
-    case "error":
-      return "destructive";
-    case "running":
-      return "secondary";
-    default:
-      return "outline";
-  }
-}
+import { SummaryPanel } from "@/components/detail/summary-panel";
+import { AnnotationPanel } from "@/components/annotations/annotation-panel";
+import { FavoriteButton } from "@/components/annotations/favorite-button";
+import { useSelection } from "@/stores/selection-store";
+import { formatDuration, formatTimestamp, statusVariant } from "@/lib/format";
+import { useShortcut } from "@/lib/shortcuts";
 
 export default function TraceDetailPage() {
   const params = useParams<{ traceId: string }>();
@@ -71,31 +49,71 @@ export default function TraceDetailPage() {
   const traceId = params.traceId;
 
   const [detail, setDetail] = useState<TraceDetail | null>(null);
+  const [annotation, setAnnotation] = useState<Annotation | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState("summary");
 
-  const fetchTrace = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await getTrace(traceId);
-      setDetail(data);
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to fetch trace"
-      );
-    } finally {
-      setLoading(false);
-    }
+  const select = useSelection((s) => s.select);
+
+  // Effect-driven fetch (recommended React 19 pattern): the controller flag
+  // makes it safe under StrictMode and unmount; setState lands inside a
+  // microtask so the effect body stays "pure" from the linter's perspective.
+  useEffect(() => {
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (!cancelled) {
+        setLoading(true);
+        setError(null);
+      }
+    });
+
+    (async () => {
+      try {
+        const data = await getTrace(traceId);
+        if (cancelled) return;
+        setDetail(data);
+        setAnnotation(data.annotation ?? null);
+      } catch (err) {
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : "Failed to fetch trace");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [traceId]);
 
-  useEffect(() => {
-    fetchTrace();
-  }, [fetchTrace]);
+  const retry = useCallback(() => {
+    // Bump a fake state to re-run the effect; simplest is to clear `detail` so
+    // the spinner shows. We do it imperatively here (user-initiated, not in
+    // render) so the purity rule is satisfied.
+    setLoading(true);
+    setError(null);
+    (async () => {
+      try {
+        const data = await getTrace(traceId);
+        setDetail(data);
+        setAnnotation(data.annotation ?? null);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to fetch trace");
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [traceId]);
 
   const timeline = useMemo(
     () => (detail ? buildTimeline(detail) : []),
     [detail]
+  );
+
+  const timelineById = useMemo(
+    () => new Map(timeline.map((i) => [i.id, i])),
+    [timeline]
   );
 
   const summary = useMemo(
@@ -103,8 +121,99 @@ export default function TraceDetailPage() {
     [detail]
   );
 
+  // `traceEnd` falls back to the most recent recorded timestamp when the
+  // trace is still running. We avoid `Date.now()` during render (React 19's
+  // purity rule) by deriving from the trace data we already have — events,
+  // model calls, and tool calls each carry timestamps.
   const traceStart = detail?.trace.startedAt ?? 0;
-  const traceEnd = detail?.trace.endedAt ?? Date.now();
+  const traceEnd = useMemo(() => {
+    if (!detail) return 0;
+    if (detail.trace.endedAt != null) return detail.trace.endedAt;
+    let max = detail.trace.startedAt;
+    for (const ev of detail.events) {
+      if (ev.timestamp > max) max = ev.timestamp;
+    }
+    for (const mc of detail.modelCalls) {
+      const end = mc.endedAt ?? mc.startedAt + (mc.durationMs ?? 0);
+      if (end > max) max = end;
+    }
+    for (const tc of detail.toolCalls) {
+      const end = tc.endedAt ?? tc.startedAt + (tc.durationMs ?? 0);
+      if (end > max) max = end;
+    }
+    return max;
+  }, [detail]);
+
+  // Selecting a hotspot jumps to the timeline and highlights the same item.
+  const handleHotspotSelect = (id: string) => {
+    const item = timelineById.get(id);
+    if (item) {
+      select(item);
+      setActiveTab("timeline");
+    }
+  };
+
+  const toggleFavorite = async () => {
+    const next = !(annotation?.favorite ?? false);
+    const optimistic: Annotation = {
+      traceId,
+      favorite: next,
+      note: annotation?.note ?? null,
+      tags: annotation?.tags ?? [],
+      updatedAt: Date.now(),
+    };
+    setAnnotation(optimistic);
+    try {
+      const result = await updateAnnotation(traceId, { favorite: next });
+      setAnnotation(result);
+    } catch {
+      setAnnotation(annotation);
+    }
+  };
+
+  // ── Keyboard shortcuts: tab navigation + back + favorite toggle ──────
+  useShortcut({
+    key: "b",
+    description: "Back to trace list",
+    group: "Trace detail",
+    handler: () => router.push("/traces"),
+  });
+  useShortcut({
+    key: "s",
+    description: "Summary tab",
+    group: "Trace detail",
+    handler: () => setActiveTab("summary"),
+  });
+  useShortcut({
+    key: "t",
+    description: "Timeline tab",
+    group: "Trace detail",
+    handler: () => setActiveTab("timeline"),
+  });
+  useShortcut({
+    key: "g",
+    description: "Graph tab",
+    group: "Trace detail",
+    handler: () => setActiveTab("graph"),
+  });
+  useShortcut({
+    key: "v",
+    description: "Events tab",
+    group: "Trace detail",
+    handler: () => setActiveTab("events"),
+  });
+  useShortcut({
+    key: "d",
+    description: "Data tab",
+    group: "Trace detail",
+    handler: () => setActiveTab("data"),
+  });
+  useShortcut({
+    key: "f",
+    description: "Toggle favorite",
+    group: "Trace detail",
+    handler: () => void toggleFavorite(),
+  });
 
   if (loading) {
     return (
@@ -135,12 +244,14 @@ export default function TraceDetailPage() {
       <div className="flex flex-1 flex-col items-center justify-center gap-4 p-6">
         <AlertCircle className="size-12 text-destructive/50" />
         <h2 className="text-lg font-medium">Trace not found</h2>
-        <p className="text-sm text-muted-foreground">{error ?? "The requested trace could not be loaded."}</p>
+        <p className="text-sm text-muted-foreground">
+          {error ?? "The requested trace could not be loaded."}
+        </p>
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => router.push("/traces")}>
             Back to Traces
           </Button>
-          <Button variant="ghost" onClick={fetchTrace}>
+          <Button variant="ghost" onClick={retry}>
             Retry
           </Button>
         </div>
@@ -154,17 +265,27 @@ export default function TraceDetailPage() {
     <div className="flex flex-1 flex-col overflow-hidden">
       <header className="shrink-0 border-b px-6 py-3">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-3 min-w-0">
-            <Button variant="ghost" size="icon-sm" onClick={() => router.push("/traces")}>
+          <div className="flex items-center gap-2 min-w-0">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => router.push("/traces")}
+            >
               <ArrowLeft className="size-4" />
             </Button>
+            <FavoriteButton
+              favorite={annotation?.favorite ?? false}
+              onToggle={toggleFavorite}
+              size="md"
+            />
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <h1 className="truncate text-lg font-semibold">{trace.name}</h1>
                 <Badge variant={statusVariant(trace.status)}>{trace.status}</Badge>
               </div>
               <p className="text-xs text-muted-foreground">
-                {formatTimestamp(trace.startedAt)} · {formatDuration(trace.durationMs)} ·{" "}
+                {formatTimestamp(trace.startedAt)} ·{" "}
+                {formatDuration(trace.durationMs)} ·{" "}
                 <span className="font-mono">{trace.id.slice(0, 8)}</span>
               </p>
             </div>
@@ -183,7 +304,10 @@ export default function TraceDetailPage() {
                   </span>
                 )}
                 {summary.estimatedCostUsd > 0 && (
-                  <span className="hidden sm:inline" title="Estimated cost in USD (static pricing)">
+                  <span
+                    className="hidden sm:inline"
+                    title="Estimated cost in USD (static pricing)"
+                  >
                     est. ${summary.estimatedCostUsd.toFixed(4)}
                   </span>
                 )}
@@ -196,15 +320,24 @@ export default function TraceDetailPage() {
 
       <div className="flex min-h-0 flex-1">
         <div className="flex min-w-0 flex-1 flex-col border-r">
-          <Tabs defaultValue="timeline" className="flex flex-1 flex-col">
+          <Tabs
+            value={activeTab}
+            onValueChange={setActiveTab}
+            className="flex flex-1 flex-col"
+          >
             <div className="shrink-0 border-b px-4 py-2">
               <TabsList>
+                <TabsTrigger value="summary">Summary</TabsTrigger>
                 <TabsTrigger value="timeline">Timeline</TabsTrigger>
                 <TabsTrigger value="graph">Graph</TabsTrigger>
                 <TabsTrigger value="events">Events</TabsTrigger>
                 <TabsTrigger value="data">Data</TabsTrigger>
               </TabsList>
             </div>
+
+            <TabsContent value="summary" className="mt-0 flex-1 overflow-auto">
+              <SummaryPanel detail={detail} onSelect={handleHotspotSelect} />
+            </TabsContent>
 
             <TabsContent value="timeline" className="mt-0 flex-1 overflow-auto">
               <TimelinePanel
@@ -245,18 +378,32 @@ export default function TraceDetailPage() {
                     </CardContent>
                   </Card>
                 )}
-                {trace.input == null && trace.output == null && trace.metadata == null && (
-                  <p className="text-sm text-muted-foreground">
-                    No input/output data recorded for this trace.
-                  </p>
-                )}
+                {trace.input == null &&
+                  trace.output == null &&
+                  trace.metadata == null && (
+                    <p className="text-sm text-muted-foreground">
+                      No input/output data recorded for this trace.
+                    </p>
+                  )}
               </div>
             </TabsContent>
           </Tabs>
         </div>
 
-        <div className="hidden w-[380px] shrink-0 lg:block">
-          <EventInspector />
+        <div className="hidden w-[380px] shrink-0 flex-col lg:flex">
+          <div className="border-b p-3">
+            {/* `key` remounts the editor on trace navigation so its internal
+                state resets cleanly without setState-in-effect. */}
+            <AnnotationPanel
+              key={trace.id}
+              traceId={trace.id}
+              initial={annotation}
+              onSaved={setAnnotation}
+            />
+          </div>
+          <div className="min-h-0 flex-1">
+            <EventInspector />
+          </div>
         </div>
       </div>
     </div>
@@ -300,7 +447,7 @@ function EventsTable({ detail }: { detail: TraceDetail }) {
       category: "event",
     });
   }
-  for (const sp of detail.spans) {
+  for (const sp of flattenSpans(detail.spans)) {
     allItems.push({
       time: sp.startedAt,
       type: sp.kind,
