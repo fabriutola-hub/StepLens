@@ -1,0 +1,49 @@
+{
+  "name": "@agent-replay/sdk",
+  "version": "0.2.0",
+  "description": "Recording client for AI agent executions — sends traces to StepLens.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/fabriutola-hub/StepLens.git",
+    "directory": "packages/sdk"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": ["dist", "README.md"],
+  "publishConfig": {
+    "access": "public"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./simple": {
+      "import": "./dist/simple.js",
+      "types": "./dist/simple.d.ts"
+    },
+    "./integrations/openai": {
+      "import": "./dist/integrations/openai.js",
+      "types": "./dist/integrations/openai.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "clean": "rm -rf dist .turbo"
+  },
+  "dependencies": {
+    "@agent-replay/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "tsup": "^8.4.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.1.1"
+  }
+}

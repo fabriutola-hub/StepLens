@@ -1,0 +1,44 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# build outputs
+dist/
+.next/
+.turbo/
+out/
+*.tsbuildinfo
+
+# CLI / tooling output
+exports/
+.playwright-mcp/
+coverage/
+
+# local assistant/tooling state
+.claude/
+.commandcode/
+.qoder/
+
+# database files
+*.db
+*.db-wal
+*.db-shm
+
+# environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# debug
+npm-debug.log*
+pnpm-debug.log*

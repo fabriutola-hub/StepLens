@@ -1,0 +1,42 @@
+{
+  "name": "@agent-replay/cli",
+  "version": "0.2.0",
+  "description": "Command-line interface for StepLens — demo, record, export, and start Studio.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/fabriutola-hub/StepLens.git",
+    "directory": "packages/cli"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "bin": {
+    "agent-replay": "./dist/index.js"
+  },
+  "files": ["dist", "templates", "README.md"],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "clean": "rm -rf dist .turbo"
+  },
+  "dependencies": {
+    "@agent-replay/core": "workspace:*",
+    "@agent-replay/sdk": "workspace:*",
+    "better-sqlite3": "^12.10.0",
+    "commander": "^13.1.0"
+  },
+  "devDependencies": {
+    "@agent-replay/examples": "workspace:*",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^25.9.1",
+    "tsup": "^8.4.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.1.1"
+  }
+}

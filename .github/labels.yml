@@ -1,0 +1,26 @@
+# Repository labels for StepLens.
+# Apply with a label-sync action/tool (e.g. `github-label-sync --labels .github/labels.yml`).
+
+- name: good first issue
+  color: "7057ff"
+  description: Good for newcomers — small, well-scoped, low context required.
+
+- name: help wanted
+  color: "008672"
+  description: Extra attention is wanted; maintainers welcome contributions here.
+
+- name: docs
+  color: "0075ca"
+  description: Documentation, examples, and READMEs.
+
+- name: integration
+  color: "5319e7"
+  description: SDK integrations and framework adapters (OpenAI, Vercel AI, LangChain, …).
+
+- name: bug
+  color: "d73a4a"
+  description: Something isn't working as expected.
+
+- name: dx
+  color: "fbca04"
+  description: Developer experience — ergonomics, errors, setup, tooling.

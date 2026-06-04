@@ -1,0 +1,29 @@
+{
+  "name": "@agent-replay/examples",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "clean": "rm -rf dist .turbo"
+  },
+  "dependencies": {
+    "@agent-replay/core": "workspace:*",
+    "@agent-replay/sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "tsup": "^8.4.0",
+    "typescript": "^5.7.0"
+  }
+}

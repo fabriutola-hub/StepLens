@@ -1,0 +1,22 @@
+{
+  "name": "steplens",
+  "version": "0.2.0",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "demo": "node packages/cli/dist/index.js demo",
+    "agent-replay": "node packages/cli/dist/index.js",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "clean": "turbo run clean"
+  },
+  "devDependencies": {
+    "@agent-replay/sdk": "workspace:*",
+    "turbo": "^2.5.0",
+    "typescript": "^5.7.0"
+  },
+  "packageManager": "pnpm@11.5.1"
+}
