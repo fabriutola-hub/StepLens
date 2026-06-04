@@ -15,7 +15,7 @@
 
 # ── Builder ───────────────────────────────────────────────────────────────────
 # Full image so better-sqlite3 / sharp can compile if no prebuilt binary exists.
-FROM node:22-bookworm AS builder
+FROM node:26-bookworm AS builder
 # Tell the Studio Next.js config to emit a standalone server bundle.
 ENV STUDIO_STANDALONE=1
 WORKDIR /repo
@@ -32,7 +32,7 @@ RUN pnpm --filter @agent-replay/core build \
  && pnpm --filter @agent-replay/studio build:standalone
 
 # ── Runner ────────────────────────────────────────────────────────────────────
-FROM node:22-bookworm-slim AS runner
+FROM node:26-bookworm-slim AS runner
 
 # OCI labels
 ARG VERSION=0.8.0
