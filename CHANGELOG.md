@@ -4,6 +4,113 @@ All notable changes to this project are documented here. The format is loosely
 based on [Keep a Changelog](https://keepachangelog.com/), and the project aims
 to follow [Semantic Versioning](https://semver.org/).
 
+## [0.8.0] — 2026-06-04
+
+The "Open Source Quality" release. The codebase is now structured, documented,
+and presented like a real OSS project — `CODE_OF_CONDUCT`, `CONTRIBUTING`,
+issue/PR templates, `CODEOWNERS`, dependabot, release-drafter, CodeQL, and
+devcontainer all in place. The Workbench grows bulk operations, an activity
+heat map, a settings panel, and live Server-Sent Events updates. The CLI
+adds `stats`, `prune`, and `watch`. Studio ships bilingual (EN/ES) UI
+and a cost-budget alert banner.
+
+### Added
+- **Community & governance files** — `CODE_OF_CONDUCT.md` (Contributor
+  Covenant 2.1), `CONTRIBUTING.md` (rewritten for monorepo + dev loop),
+  `GOVERNANCE.md` (lazy consensus + RFC flow), `MAINTAINERS.md`,
+  `CODEOWNERS` (auto-review by path), `dependabot.yml` (npm/actions/docker
+  weekly), `.github/ISSUE_TEMPLATE/{bug,feature}.yml` and `config.yml`,
+  `FUNDING.yml`, and `.all-contributorsrc`.
+- **DX tooling** — `.editorconfig`, `.nvmrc` (pinned Node 22),
+  `.prettierrc.json`, `.vscode/{settings,extensions}.json`,
+  `.devcontainer/devcontainer.json` (Codespaces-ready), and
+  `docker-compose.dev.yml` (one-shot dev environment with healthcheck).
+- **CI workflows** — `codeql.yml` (weekly JavaScript/TypeScript security
+  scan), `dependency-review.yml` (blocks PRs adding GPL/AGPL deps and
+  high-severity advisories), `release-drafter.yml` (auto-collects PRs
+  into release notes by label), and `.github/release-drafter.yml` with
+  category templates.
+- **`/api/health`** — JSON envelope `{status, service, version, uptimeMs,
+  startedAt, db: {connected, traceCount?, error?}}`. 200 healthy, 503
+  DB-down. Suitable for Docker `HEALTHCHECK` and Kubernetes probes.
+- **Settings panel** at `/settings` — theme (light/dark/system), language
+  (en/es/system), live-updates toggle, poll interval, default page size
+  and sort, daily and monthly cost budgets, "Reset to defaults" button.
+  Persisted to `localStorage["steplens.settings.v1"]`.
+- **Server-Sent Events** stream at `/api/events/stream` — `event: trace`
+  emits `{id, name, status, startedAt}`; `event: ping` every 1s as
+  keep-alive. The Workbench consumes it when "Live updates" is on.
+- **Bulk operations** — `/api/traces/bulk` accepts `op: "delete"` or
+  `op: "tag"` over up to 1000 trace ids per request. A floating
+  BulkActionBar appears in the Workbench when ≥1 trace is selected.
+- **Bulk ZIP export** — `/api/export/bulk` (POST or `?ids=a,b,c`) returns
+  a `Content-Type: application/zip` archive with one `traces/<id>.json`
+  per id plus a top-level `_manifest.json`. No new dependencies — a
+  pure-Node `lib/zip.ts` writes STORE-method ZIP entries.
+- **Activity heat map** — `GET /api/activity` returns a per-day
+  histogram (epoch-bucket → count, with `tz` offset support). The
+  Workbench renders a 12×7 grid (GitHub-style) with month labels
+  and hover tooltips.
+- **Cost budget alerts** — when a daily or monthly budget is set in
+  Settings, an amber banner appears at the top of the Workbench when
+  the filtered cost exceeds it. Dismissible per session.
+- **Recent traces** — the most recent 5 traces the user has opened are
+  tracked in `localStorage` and shown in the workbench footer.
+- **Sticky URL filters** — `useWorkbenchUrl` keeps the Workbench
+  state in the URL query string, with bidirectional sync. Bookmarks
+  and browser-back work for free.
+- **Error boundary** — a top-level React error boundary catches
+  unhandled UI errors and offers "Reload page" + "Copy error details"
+  affordances instead of a blank screen.
+- **CLI commands** — `steplens stats [--since 24h] [--json]`,
+  `steplens prune [--older-than 7d] [--status error] [--dry-run | --yes]`,
+  and `steplens watch [--format text|json]` (the `watch` command
+  consumes the new SSE endpoint).
+- **i18n** — minimal custom i18n with EN/ES dictionaries. Locale is
+  taken from the user setting (with a "System" option that tracks
+  `navigator.language`). Keys missing in ES fall back to EN; the key
+  itself is the ultimate fallback (visible in dev).
+- **Recipes** — `docs/recipes/cost-watch.md` and
+  `docs/recipes/prod-debug.md` give step-by-step guides for the two
+  most common StepLens use cases.
+- **Docs** — `docs/FAQ.md`, `docs/TROUBLESHOOTING.md`,
+  `docs/MIGRATION-0.8.md`, `docs/api-reference.md` (complete endpoint
+  reference), and an updated `docs/architecture.md` with a Mermaid
+  data-flow diagram and an SSE sequence diagram.
+
+### Changed
+- **`Input`** is now `forwardRef`-capable so callers can focus it
+  programmatically (used by the `/` shortcut).
+- **Activity heat map** is rendered as an inline SVG-style grid, not
+  an external chart library — keeps the bundle slim.
+- **Cost budgets** in the URL filters helpers now round-trip through
+  `from`/`to` to enable click-to-filter from the heat map.
+- **CLI `prune`** filters by `startedAt < cutoff` client-side so a
+  single API call covers `--older-than 30d` and `--status error`
+  combined.
+- All package versions, runtime `*_VERSION` constants, and the Docker
+  image tag bumped to `0.8.0`.
+
+### Fixed
+- `error-boundary.tsx` was originally tripping the new React 19
+  `setState-in-effect` lint rule; restructured to keep state local
+  to `componentDidCatch` only.
+- `activity-heatmap.tsx` was originally reading `Date.now()` inside a
+  `useMemo`; now uses a stable `useState` initializer anchor.
+- `events/stream/route.ts` kept the `request` parameter (it's the
+  Next.js route contract), but previously aliased it `_request` and
+  the underscore triggered the unused-var lint — fixed with a `void
+  request` reference and a comment.
+
+### Security
+- The new `dependency-review` workflow blocks PRs that add GPL-3.0 or
+  AGPL-3.0 dependencies, or any new dependency with a known
+  high-severity advisory. Devs can override per-PR with a Dependabot
+  allowance.
+- `CodeQL` runs weekly on `main` and on every PR. Defaults to
+  `security-and-quality` queries.
+- **No new permissions** or scopes were added to the GitHub workflows.
+
 ## [0.66.0] — 2026-06-04
 
 Studio Polish release. The Workbench grows the rough edges off: every common

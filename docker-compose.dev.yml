@@ -1,0 +1,38 @@
+# docker-compose.dev.yml — one-shot dev environment.
+#
+# Brings up Studio in a Docker container with a host-mounted SQLite
+# volume so traces survive container restarts. Useful for:
+#   - Trying StepLens without installing Node locally
+#   - Sharing a single Studio instance across an internal team
+#   - Reproducing prod-like behaviour against the GHCR image
+#
+# Usage:
+#   docker compose -f docker-compose.dev.yml up
+#   open http://localhost:3000
+#
+# Stop:
+#   docker compose -f docker-compose.dev.yml down
+#
+# Persistent data lives in ./.steplens-data/ on the host so you can
+# inspect / back up the SQLite file directly.
+
+services:
+  studio:
+    image: ghcr.io/fabriutola-hub/steplens:latest
+    container_name: steplens-studio
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      AGENT_REPLAY_ENDPOINT: http://localhost:3000
+    volumes:
+      - ./.steplens-data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    labels:
+      org.opencontainers.image.title: "StepLens Studio (dev compose)"

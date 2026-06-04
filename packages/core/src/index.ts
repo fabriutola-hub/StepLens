@@ -80,4 +80,4 @@ export {
 export type { NormalizeResult } from "./normalize.js";
 
 // ── Version ──────────────────────────────────────────────────────────────────
-export const CORE_VERSION = "0.66.0";
+export const CORE_VERSION = "0.8.0";

@@ -1,0 +1,23 @@
+name: Release Drafter
+
+# Maintains a draft release on GitHub Releases that auto-collects merged PRs
+# under their category headings. When you're ready to ship, you bump versions,
+# tag, and publish the draft — labels do the rest.
+
+on:
+  push:
+    branches: [main]
+  pull_request_target:
+    types: [opened, reopened, synchronize, edited, labeled, unlabeled]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update_release_draft:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: release-drafter/release-drafter@v6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

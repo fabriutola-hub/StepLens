@@ -42,6 +42,7 @@ import { FavoriteButton } from "@/components/annotations/favorite-button";
 import { useSelection } from "@/stores/selection-store";
 import { formatDuration, formatTimestamp, statusVariant } from "@/lib/format";
 import { useShortcut } from "@/lib/shortcuts";
+import { pushRecent } from "@/stores/recent-traces";
 
 export default function TraceDetailPage() {
   const params = useParams<{ traceId: string }>();
@@ -74,6 +75,8 @@ export default function TraceDetailPage() {
         if (cancelled) return;
         setDetail(data);
         setAnnotation(data.annotation ?? null);
+        // Track this trace in the recent list (only on success).
+        pushRecent(traceId, data.trace.name);
       } catch (err) {
         if (cancelled) return;
         setError(err instanceof Error ? err.message : "Failed to fetch trace");

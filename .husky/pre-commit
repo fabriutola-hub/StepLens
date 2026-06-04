@@ -1,0 +1,20 @@
+#!/usr/bin/env sh
+# StepLens pre-commit hook.
+#
+# Runs typecheck + lint on the whole monorepo before allowing the commit.
+# Opt-in: skip with `git commit --no-verify` when you know what you're doing.
+#
+# Activate locally:
+#   git config core.hooksPath .husky
+# Or install husky:
+#   pnpm dlx husky install
+
+set -e
+
+echo "[steplens hooks] running pnpm lint…"
+pnpm lint
+
+echo "[steplens hooks] running pnpm typecheck…"
+pnpm typecheck
+
+echo "[steplens hooks] ok ✓"

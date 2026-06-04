@@ -5,7 +5,7 @@ import { createRequire } from "node:module";
 import { existsSync } from "node:fs";
 import { resolve, dirname, join } from "node:path";
 
-const CLI_VERSION = "0.66.0";
+const CLI_VERSION = "0.8.0";
 const DEFAULT_ENDPOINT = "http://localhost:3000";
 
 const program = new Command();
@@ -625,5 +625,271 @@ otel
     }
   });
 
+// ── stats ───────────────────────────────────────────────────────────────────
+program
+  .command("stats")
+  .description("Print aggregate trace stats from Studio (no DB connection required)")
+  .option("-e, --endpoint <url>", "Studio API endpoint", DEFAULT_ENDPOINT)
+  .option("--since <duration>", "only count traces in the last <duration> (e.g. 24h, 7d, 1h)")
+  .option("--json", "emit machine-readable JSON instead of human text", false)
+  .action(async (options: { endpoint: string; since?: string; json: boolean }) => {
+    const since = options.since ? parseSince(options.since) : undefined;
+    const qs = new URLSearchParams();
+    if (since) qs.set("from", String(since));
+
+    try {
+      const res = await fetch(`${options.endpoint}/api/traces/stats?${qs}`);
+      if (!res.ok) {
+        console.error(`Error: API returned ${res.status}: ${await res.text()}`);
+        process.exit(1);
+      }
+      const stats = (await res.json()) as {
+        total: number;
+        statusCounts: Record<string, number>;
+        totalDurationMs: number;
+        avgDurationMs: number;
+        p95DurationMs: number;
+        totalTokens: number;
+        estimatedCostUsd: number;
+        modelCounts: Record<string, number>;
+        toolCounts: Record<string, number>;
+        errorCount: number;
+        errorRate: number;
+      };
+
+      if (options.json) {
+        console.log(JSON.stringify(stats, null, 2));
+        return;
+      }
+
+      const scope = since ? ` (last ${options.since})` : "";
+      console.log(
+        `${stats.total} traces${scope} · ${stats.errorCount} errors (${(stats.errorRate * 100).toFixed(1)}%) · $${stats.estimatedCostUsd.toFixed(4)} est.`
+      );
+      console.log(
+        `Duration: avg ${formatDuration(stats.avgDurationMs)} · p95 ${formatDuration(stats.p95DurationMs)}`
+      );
+      console.log(`Tokens:   ${stats.totalTokens.toLocaleString()}`);
+      const topModels = topEntries(stats.modelCounts, 3);
+      const topTools = topEntries(stats.toolCounts, 3);
+      if (topModels.length > 0) {
+        console.log(
+          `Top models: ${topModels.map(([k, v]) => `${k} (${v})`).join(", ")}`
+        );
+      }
+      if (topTools.length > 0) {
+        console.log(
+          `Top tools:  ${topTools.map(([k, v]) => `${k} (${v})`).join(", ")}`
+        );
+      }
+    } catch (err: unknown) {
+      console.error(
+        `Error: could not reach Studio at ${options.endpoint}: ${(err as Error).message}`
+      );
+      process.exit(1);
+    }
+  });
+
+// ── prune ───────────────────────────────────────────────────────────────────
+program
+  .command("prune")
+  .description("Delete traces matching filters; safe by default (--dry-run shows what would be deleted)")
+  .option("-e, --endpoint <url>", "Studio API endpoint", DEFAULT_ENDPOINT)
+  .option("--older-than <duration>", "only consider traces older than <duration> (e.g. 7d, 30d)")
+  .option("--status <status>", "only consider traces with this status")
+  .option("--dry-run", "print what would be deleted without deleting", false)
+  .option("--yes", "skip the interactive confirm", false)
+  .action(
+    async (options: {
+      endpoint: string;
+      olderThan?: string;
+      status?: string;
+      dryRun: boolean;
+      yes: boolean;
+    }) => {
+      const qs = new URLSearchParams();
+      qs.set("limit", "10000");
+      if (options.status) qs.set("status", options.status);
+
+      let res: Response;
+      try {
+        res = await fetch(`${options.endpoint}/api/traces?${qs}`);
+      } catch (err: unknown) {
+        console.error(`Error: ${(err as Error).message}`);
+        process.exit(1);
+      }
+      if (!res.ok) {
+        console.error(`Error: list returned ${res.status}: ${await res.text()}`);
+        process.exit(1);
+      }
+      const list = (await res.json()) as {
+        traces: Array<{ id: string; name: string; startedAt: number }>;
+        total: number;
+      };
+
+      // Apply --older-than client-side since /api/traces has a `from` param
+      // but not "older than N days"; we filter after the fetch.
+      const cutoff = options.olderThan
+        ? Date.now() - parseSince(options.olderThan)!
+        : 0;
+      const matches = list.traces.filter((t) => t.startedAt < cutoff);
+
+      if (matches.length === 0) {
+        console.log("No traces match the given filters.");
+        return;
+      }
+
+      const oldest = matches.reduce(
+        (m, t) => (t.startedAt < m ? t.startedAt : m),
+        matches[0].startedAt
+      );
+      const newest = matches.reduce(
+        (m, t) => (t.startedAt > m ? t.startedAt : m),
+        matches[0].startedAt
+      );
+      const mode = options.dryRun ? "would delete" : "deleting";
+      console.log(`${mode} ${matches.length} trace${matches.length === 1 ? "" : "s"}`);
+      console.log(`  oldest: ${new Date(oldest).toISOString().slice(0, 19)}`);
+      console.log(`  newest: ${new Date(newest).toISOString().slice(0, 19)}`);
+
+      if (options.dryRun) return;
+      if (!options.yes) {
+        console.error("Re-run with --yes to confirm, or use --dry-run to inspect first.");
+        process.exit(2);
+      }
+
+      try {
+        const del = await fetch(`${options.endpoint}/api/traces/bulk`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ op: "delete", ids: matches.map((t) => t.id) }),
+        });
+        if (!del.ok) {
+          console.error(`Error: bulk delete returned ${del.status}: ${await del.text()}`);
+          process.exit(1);
+        }
+        const result = (await del.json()) as { deleted: number };
+        console.log(
+          `✓ Deleted ${result.deleted} trace${result.deleted === 1 ? "" : "s"}.`
+        );
+      } catch (err: unknown) {
+        console.error(`Error: ${(err as Error).message}`);
+        process.exit(1);
+      }
+    }
+  );
+
+// ── watch ───────────────────────────────────────────────────────────────────
+program
+  .command("watch")
+  .description("Stream traces from Studio's live SSE endpoint and print them as they happen")
+  .option("-e, --endpoint <url>", "Studio API endpoint", DEFAULT_ENDPOINT)
+  .option("--format <fmt>", "output format: text|json (default text)", "text")
+  .action(async (options: { endpoint: string; format: string }) => {
+    const url = `${options.endpoint}/api/events/stream`;
+    process.stderr.write(`Connecting to ${url} …\n`);
+
+    const res = await fetch(url, { headers: { Accept: "text/event-stream" } });
+    if (!res.ok || !res.body) {
+      console.error(`Error: ${res.status} ${res.statusText}`);
+      process.exit(1);
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    process.stderr.write("Streaming. Press Ctrl+C to stop.\n");
+
+    const stop = async () => {
+      process.stderr.write("\nStopped.\n");
+      await reader.cancel().catch(() => undefined);
+      process.exit(0);
+    };
+    process.on("SIGINT", () => void stop());
+
+    try {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let idx;
+        while ((idx = buffer.indexOf("\n\n")) !== -1) {
+          const event = buffer.slice(0, idx);
+          buffer = buffer.slice(idx + 2);
+          const lines = event.split("\n");
+          let ev = "message";
+          let data = "";
+          for (const line of lines) {
+            if (line.startsWith("event: ")) ev = line.slice(7).trim();
+            else if (line.startsWith("data: ")) data += line.slice(6);
+          }
+          if (ev === "trace" && data) {
+            try {
+              const parsed = JSON.parse(data) as {
+                id: string;
+                name: string;
+                status: string;
+                startedAt: number;
+              };
+              if (options.format === "json") {
+                console.log(JSON.stringify(parsed));
+              } else {
+                const color = STATUS_COLORS[parsed.status] ?? "";
+                const reset = color ? "\x1b[0m" : "";
+                console.log(
+                  `${new Date(parsed.startedAt).toISOString()} ${color}${parsed.status.padEnd(9)}${reset} ${parsed.name}  ${parsed.id.slice(0, 8)}`
+                );
+              }
+            } catch {
+              // ignore malformed events
+            }
+          }
+        }
+      }
+    } catch (err: unknown) {
+      console.error(`Error: ${(err as Error).message}`);
+      process.exit(1);
+    }
+  });
+
 // ── Parse ───────────────────────────────────────────────────────────────────
 program.parse();
+
+// ── Local helpers ──────────────────────────────────────────────────────────
+
+function formatDuration(ms: number): string {
+  if (!Number.isFinite(ms) || ms <= 0) return "0ms";
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
+  return `${Math.floor(ms / 60_000)}m ${Math.round((ms % 60_000) / 1000)}s`;
+}
+
+function topEntries(
+  counts: Record<string, number>,
+  n: number
+): Array<[string, number]> {
+  return Object.entries(counts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, n);
+}
+
+const STATUS_COLORS: Record<string, string> = {
+  success: "\x1b[32m",   // green
+  error: "\x1b[31m",     // red
+  running: "\x1b[36m",   // cyan
+  cancelled: "\x1b[33m", // yellow
+};
+
+function parseSince(value: string): number | null {
+  const m = /^(\d+)([smhdw])$/.exec(value.trim());
+  if (!m) return null;
+  const n = Number(m[1]);
+  const mult: Record<string, number> = {
+    s: 1_000,
+    m: 60_000,
+    h: 3_600_000,
+    d: 86_400_000,
+    w: 604_800_000,
+  };
+  return Date.now() - n * mult[m[2]];
+}

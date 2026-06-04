@@ -1,6 +1,6 @@
 {
   "name": "@agent-replay/studio",
-  "version": "0.66.0",
+  "version": "0.8.0",
   "description": "StepLens Studio — local-first trace inspector UI and API.",
   "license": "MIT",
   "repository": {
@@ -54,6 +54,7 @@
     "vitest": "^3.1.1",
     "@vitejs/plugin-react": "^4.3.4",
     "@testing-library/react": "^16.2.0",
-    "@testing-library/jest-dom": "^6.6.3"
+    "@testing-library/jest-dom": "^6.6.3",
+    "jsdom": "^25.0.0"
   }
 }

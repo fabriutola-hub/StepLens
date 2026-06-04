@@ -1,0 +1,71 @@
+# Dependabot keeps npm dependencies and GitHub Action versions current.
+# It opens PRs grouped per ecosystem; CI must pass before merge.
+version: 2
+updates:
+  # npm packages across the monorepo.
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "07:00"
+      timezone: "Etc/UTC"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "javascript"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    groups:
+      # Bundle related deps into one PR so reviews are sane.
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react*"
+      next:
+        patterns:
+          - "next"
+          - "eslint-config-next"
+      drizzle:
+        patterns:
+          - "drizzle-*"
+          - "better-sqlite3"
+          - "@types/better-sqlite3"
+      testing:
+        patterns:
+          - "vitest"
+          - "@vitest/*"
+          - "@testing-library/*"
+      types:
+        patterns:
+          - "@types/*"
+      build:
+        patterns:
+          - "tsup"
+          - "typescript"
+          - "turbo"
+
+  # GitHub Actions.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels:
+      - "dependencies"
+      - "ci"
+    commit-message:
+      prefix: "chore(ci)"
+
+  # Dockerfile.
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    labels:
+      - "dependencies"
+      - "docker"
+    commit-message:
+      prefix: "chore(docker)"

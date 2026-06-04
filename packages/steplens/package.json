@@ -1,6 +1,6 @@
 {
   "name": "steplens",
-  "version": "0.66.0",
+  "version": "0.8.0",
   "description": "Local-first trace inspector for AI agents — install and run Studio with `npx steplens dev`.",
   "license": "MIT",
   "repository": {

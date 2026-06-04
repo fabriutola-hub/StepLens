@@ -1,0 +1,34 @@
+{
+  "name": "StepLens dev",
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:1-22-bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {}
+  },
+  "forwardPorts": [3000],
+  "portsAttributes": {
+    "3000": {
+      "label": "StepLens Studio",
+      "onAutoForward": "openBrowserOnce"
+    }
+  },
+  "postCreateCommand": "corepack enable && pnpm install --frozen-lockfile && pnpm build",
+  "postAttachCommand": {
+    "tip": "echo '👉 Run `pnpm dev` to start Studio, then `pnpm steplens demo` in another terminal.'"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "editorconfig.editorconfig",
+        "bradlc.vscode-tailwindcss",
+        "yoavbls.pretty-ts-errors",
+        "streetsidesoftware.code-spell-checker"
+      ]
+    }
+  },
+  "remoteEnv": {
+    "AGENT_REPLAY_ENDPOINT": "http://localhost:3000"
+  }
+}
