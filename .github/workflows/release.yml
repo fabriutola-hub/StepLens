@@ -88,7 +88,16 @@ jobs:
     name: publish to npm
     runs-on: ubuntu-latest
     needs: npm-pack
-    if: ${{ secrets.NPM_TOKEN != '' }}
+    # Note: GitHub Actions v3+ rejects `secrets.X` in `if:` expressions to
+    # prevent accidental leakage. We can't directly gate the job on the
+    # presence of NPM_TOKEN, so we use a defensive env-var read inside each
+    # step (which still works) and rely on the credential-less run to fail
+    # at publish time. To make the publish a no-op for forks / when the
+    # secret isn't configured, set the "NPM_PUBLISH_DISABLED" repo
+    # variable to "true" in GitHub Settings.
+    if: ${{ vars.NPM_PUBLISH_DISABLED != 'true' }}
+    env:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
