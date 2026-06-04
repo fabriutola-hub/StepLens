@@ -1,41 +1,32 @@
 {
-  "name": "@agent-replay/core",
+  "name": "steplens",
   "version": "0.4.0",
-  "description": "Shared types, Zod schemas, and cost utilities for StepLens.",
+  "description": "Local-first trace inspector for AI agents — install and run Studio with `npx steplens dev`.",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/fabriutola-hub/StepLens.git",
-    "directory": "packages/core"
+    "directory": "packages/steplens"
   },
   "type": "module",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "bin": {
+    "steplens": "./dist/index.js",
+    "agent-replay": "./dist/index.js"
+  },
   "files": ["dist", "README.md"],
   "publishConfig": {
     "access": "public"
   },
-  "exports": {
-    ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
-    }
-  },
   "scripts": {
     "build": "tsup",
+    "prepack": "node scripts/build-studio-standalone.mjs && pnpm build && node scripts/copy-studio.mjs",
     "dev": "tsup --watch",
-    "test": "vitest run",
-    "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "clean": "rm -rf dist .turbo"
-  },
-  "dependencies": {
-    "zod": "^3.24.0"
   },
   "devDependencies": {
     "@types/node": "^25.9.1",
     "tsup": "^8.4.0",
-    "typescript": "^5.7.0",
-    "vitest": "^3.1.1"
+    "typescript": "^5.7.0"
   }
 }

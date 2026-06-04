@@ -1,6 +1,6 @@
 {
   "name": "@agent-replay/cli",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Command-line interface for StepLens — demo, record, export, and start Studio.",
   "license": "MIT",
   "repository": {
@@ -11,7 +11,8 @@
   "type": "module",
   "main": "./dist/index.js",
   "bin": {
-    "agent-replay": "./dist/index.js"
+    "agent-replay": "./dist/index.js",
+    "steplens": "./dist/index.js"
   },
   "files": ["dist", "templates", "README.md"],
   "publishConfig": {
@@ -27,6 +28,7 @@
   },
   "dependencies": {
     "@agent-replay/core": "workspace:*",
+    "@agent-replay/otel": "workspace:*",
     "@agent-replay/sdk": "workspace:*",
     "better-sqlite3": "^12.10.0",
     "commander": "^13.1.0"

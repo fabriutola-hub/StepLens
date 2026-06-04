@@ -8,6 +8,10 @@
 #
 # Then open http://localhost:3000. Point the SDK/CLI at it as usual
 # (AGENT_REPLAY_ENDPOINT=http://localhost:3000).
+#
+# GHCR:
+#   ghcr.io/fabriutola-hub/steplens:latest
+#   ghcr.io/fabriutola-hub/steplens:0.4.0
 
 # ── Builder ───────────────────────────────────────────────────────────────────
 # Full image so better-sqlite3 / sharp can compile if no prebuilt binary exists.
@@ -29,6 +33,17 @@ RUN pnpm --filter @agent-replay/core build \
 
 # ── Runner ────────────────────────────────────────────────────────────────────
 FROM node:22-bookworm-slim AS runner
+
+# OCI labels
+ARG VERSION=0.4.0
+ARG COMMIT_SHA=unknown
+LABEL org.opencontainers.image.title="StepLens" \
+      org.opencontainers.image.description="Local-first trace inspector for AI agents" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.source="https://github.com/fabriutola-hub/StepLens" \
+      org.opencontainers.image.revision="${COMMIT_SHA}" \
+      org.opencontainers.image.licenses="MIT"
+
 ENV NODE_ENV=production \
     PORT=3000 \
     HOSTNAME=0.0.0.0 \

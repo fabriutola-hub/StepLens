@@ -1,42 +1,133 @@
 // @agent-replay/cli — command-line interface for StepLens
 
 import { Command } from "commander";
+import { createRequire } from "node:module";
+import { existsSync } from "node:fs";
+import { resolve, dirname, join } from "node:path";
 
+const CLI_VERSION = "0.4.0";
 const DEFAULT_ENDPOINT = "http://localhost:3000";
 
 const program = new Command();
 
 program
-  .name("agent-replay")
+  .name("steplens")
   .description("Local-first trace inspector for AI agents — record, list, and visualize traces in Studio")
-  .version("0.3.0");
+  .version(CLI_VERSION);
+
+// ── helpers ─────────────────────────────────────────────────────────────────
+
+/** Detect whether we're running inside the StepLens monorepo. */
+function isMonorepo(): boolean {
+  // Walk up from cwd looking for pnpm-workspace.yaml
+  let dir = process.cwd();
+  for (let i = 0; i < 5; i++) {
+    if (existsSync(join(dir, "pnpm-workspace.yaml"))) return true;
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return false;
+}
+
+/** Try to resolve the @agent-replay/studio package location. */
+function resolveStudioPackage(): string | null {
+  const req = createRequire(import.meta.url);
+  try {
+    const studioPkg = req.resolve("@agent-replay/studio/package.json");
+    return dirname(studioPkg);
+  } catch {
+    return null;
+  }
+}
+
+/** Try to resolve the `next` binary from the studio package. */
+function resolveNextBin(studioDir: string): string | null {
+  const candidates = [
+    join(studioDir, "node_modules", ".bin", "next"),
+    join(studioDir, "node_modules", "next", "dist", "bin", "next"),
+  ];
+  for (const c of candidates) {
+    if (existsSync(c)) return c;
+  }
+  // Fallback: try to resolve from studio's node_modules
+  const req = createRequire(join(studioDir, "package.json"));
+  try {
+    const nextBin = req.resolve("next/dist/bin/next");
+    return nextBin;
+  } catch {
+    return null;
+  }
+}
+
+function openBrowser(url: string): void {
+  import("node:child_process").then(({ exec }) => {
+    const p = process.platform;
+    if (p === "win32") exec(`start ${url}`);
+    else if (p === "darwin") exec(`open ${url}`);
+    else exec(`xdg-open ${url}`);
+  });
+}
 
 // ── dev ─────────────────────────────────────────────────────────────────────
 program
   .command("dev")
-  .description("Start the Studio dev server (requires the monorepo) and open the browser")
+  .description("Start the StepLens Studio server and open the browser")
   .option("-p, --port <port>", "port to run on", "3000")
+  .option("--host <host>", "hostname to bind to", "127.0.0.1")
   .option("--no-open", "don't open browser automatically")
-  .action(async (options: { port: string; open: boolean }) => {
+  .action(async (options: { port: string; host: string; open: boolean }) => {
     const { spawn } = await import("node:child_process");
     const port = options.port;
-    console.log("Starting StepLens...");
+    const host = options.host;
 
-    const child = spawn("pnpm", ["--filter", "@agent-replay/studio", "dev"], {
-      cwd: process.cwd(),
+    if (host === "0.0.0.0") {
+      console.warn("⚠  Binding to 0.0.0.0 — Studio has no authentication. Use with caution on shared networks.");
+    }
+
+    // If we're inside the monorepo, use pnpm filter for dev mode
+    if (isMonorepo()) {
+      console.log("Starting StepLens (monorepo mode)...");
+      const child = spawn("pnpm", ["--filter", "@agent-replay/studio", "dev"], {
+        cwd: process.cwd(),
+        stdio: "inherit",
+        env: Object.assign({}, process.env, { PORT: port, HOSTNAME: host }),
+        shell: true,
+      });
+
+      if (options.open !== false) {
+        setTimeout(() => openBrowser(`http://localhost:${port}`), 3000);
+      }
+
+      child.on("close", (code: number | null) => process.exit(code ?? 0));
+      return;
+    }
+
+    // Standalone mode: find the installed studio package and run next start
+    console.log("Starting StepLens (standalone mode)...");
+    const studioDir = resolveStudioPackage();
+    if (!studioDir) {
+      console.error("Error: could not locate @agent-replay/studio package.");
+      console.error("Make sure it is installed: npm install @agent-replay/studio");
+      process.exit(1);
+      return;
+    }
+
+    const nextBin = resolveNextBin(studioDir);
+    if (!nextBin) {
+      console.error("Error: could not locate Next.js binary within @agent-replay/studio.");
+      process.exit(1);
+      return;
+    }
+
+    const child = spawn("node", [nextBin, "start", "-p", port, "-H", host], {
+      cwd: studioDir,
       stdio: "inherit",
-      env: Object.assign({}, process.env, { PORT: port }),
-      shell: true,
+      env: Object.assign({}, process.env, { PORT: port, HOSTNAME: host, NODE_ENV: "production" }),
     });
 
     if (options.open !== false) {
-      const { exec } = await import("node:child_process");
-      setTimeout(() => {
-        const p = process.platform;
-        if (p === "win32") exec(`start http://localhost:${port}`);
-        else if (p === "darwin") exec(`open http://localhost:${port}`);
-        else exec(`xdg-open http://localhost:${port}`);
-      }, 3000);
+      setTimeout(() => openBrowser(`http://localhost:${port}`), 2000);
     }
 
     child.on("close", (code: number | null) => process.exit(code ?? 0));
@@ -57,13 +148,16 @@ program
     if (major >= 18) console.log(`  ✓ Node.js ${nodeVersion}`);
     else { console.log(`  ✗ Node.js ${nodeVersion} (>= 18 required)`); allOk = false; }
 
-    try {
-      const { execSync } = await import("node:child_process");
-      const pnpmVer = execSync("pnpm --version", { encoding: "utf-8", timeout: 5000 }).trim();
-      console.log(`  ✓ pnpm ${pnpmVer}`);
-    } catch {
-      console.log("  ✗ pnpm not found");
-      allOk = false;
+    // Only check pnpm when inside the monorepo
+    if (isMonorepo()) {
+      try {
+        const { execSync } = await import("node:child_process");
+        const pnpmVer = execSync("pnpm --version", { encoding: "utf-8", timeout: 5000 }).trim();
+        console.log(`  ✓ pnpm ${pnpmVer}`);
+      } catch {
+        console.log("  ✗ pnpm not found (required for monorepo development)");
+        allOk = false;
+      }
     }
 
     try {
@@ -82,7 +176,7 @@ program
       if (res.ok) console.log(`  ✓ Studio reachable at ${endpoint}`);
       else { console.log(`  ✗ Studio returned status ${res.status}`); allOk = false; }
     } catch {
-      console.log(`  - Studio not running at ${endpoint} (start it with \`agent-replay dev\`)`);
+      console.log(`  - Studio not running at ${endpoint} (start it with \`npx steplens dev\`)`);
     }
 
     console.log("");
@@ -93,12 +187,11 @@ program
 // ── init ────────────────────────────────────────────────────────────────────
 program
   .command("init")
-  .description("Create a .env with the Agent Replay environment variables the SDK reads")
+  .description("Create a .env with the StepLens environment variables the SDK reads")
   .option("-e, --endpoint <url>", "Studio API endpoint", DEFAULT_ENDPOINT)
   .option("-f, --force", "overwrite an existing .env", false)
   .action(async (options: { endpoint: string; force: boolean }) => {
-    const { writeFileSync, existsSync } = await import("node:fs");
-    const { resolve } = await import("node:path");
+    const { writeFileSync } = await import("node:fs");
     const envPath = resolve(process.cwd(), ".env");
 
     if (existsSync(envPath) && !options.force) {
@@ -109,7 +202,7 @@ program
       return;
     }
 
-    const content = `# Agent Replay — read by @agent-replay/sdk's createClient()
+    const content = `# StepLens — read by @agent-replay/sdk's createClient()
 # Studio serves both the UI and the ingest API at this URL.
 AGENT_REPLAY_ENDPOINT=${options.endpoint}
 # Set to false to disable recording without touching your code.
@@ -118,7 +211,7 @@ AGENT_REPLAY_ENABLED=true
     writeFileSync(envPath, content, "utf-8");
     console.log(`Created ${envPath}`);
     console.log("\nNext steps:");
-    console.log("  1. Start Studio:        agent-replay dev");
+    console.log("  1. Start Studio:        npx steplens dev");
     console.log("  2. Load the .env in your app (e.g. `node --env-file=.env your-agent.js`)");
     console.log("  3. Record traces with `createClient()` from @agent-replay/sdk");
   });
@@ -132,7 +225,6 @@ program
   .option("-o, --output <path>", "Output directory", "./exports")
   .action(async (traceId: string, options: { endpoint: string; output: string }) => {
     const { mkdirSync, writeFileSync } = await import("node:fs");
-    const { resolve } = await import("node:path");
     const apiUrl = options.endpoint.replace(/\/+$/, "");
     const outputDir = resolve(process.cwd(), options.output);
 
@@ -156,7 +248,7 @@ program
 // ── record ──────────────────────────────────────────────────────────────────
 program
   .command("record")
-  .description("Run a command with Agent Replay env vars set (AGENT_REPLAY_ENDPOINT, AGENT_REPLAY_ENABLED). The command must use @agent-replay/sdk to record traces — this does not auto-instrument.")
+  .description("Run a command with StepLens env vars set. The command must use @agent-replay/sdk to record traces.")
   .option("-e, --endpoint <url>", "Studio API endpoint", DEFAULT_ENDPOINT)
   .allowUnknownOption()
   .allowExcessArguments()
@@ -164,8 +256,8 @@ program
     const rawArgs = process.argv;
     const dashIdx = rawArgs.indexOf("--");
     if (dashIdx === -1 || dashIdx >= rawArgs.length - 1) {
-      console.error("Error: No command specified. Use: agent-replay record -- <command>");
-      console.error("Example: agent-replay record -- node my-agent.js");
+      console.error("Error: No command specified. Use: steplens record -- <command>");
+      console.error("Example: steplens record -- node my-agent.js");
       process.exit(1);
     }
     const actualCmd = rawArgs.slice(dashIdx + 1);
@@ -196,7 +288,6 @@ program
   .action(async (options: { endpoint: string }) => {
     const endpoint = options.endpoint.replace(/\/+$/, "");
 
-    // Studio must be running — we don't fake or auto-spawn it.
     let reachable = false;
     try {
       const res = await fetch(endpoint, { signal: AbortSignal.timeout(1500) });
@@ -207,7 +298,7 @@ program
 
     if (!reachable) {
       console.error(`Studio is not reachable at ${endpoint}.`);
-      console.error("Start it first (in the repo: `pnpm dev`, or `agent-replay dev`), then re-run `agent-replay demo`.");
+      console.error("Start it first (`npx steplens dev`), then re-run `npx steplens demo`.");
       process.exit(1);
     }
 
@@ -224,7 +315,6 @@ program
     await runFailingAgent(client);
     console.log("  ✓ Failing Agent");
 
-    // Flush all buffered events before exiting.
     await client.shutdown();
 
     console.log(`\nRecorded 3 traces. Open ${endpoint} to explore them.`);
@@ -244,7 +334,6 @@ const TEMPLATES = [
 ] as const;
 type TemplateName = (typeof TEMPLATES)[number];
 
-/** Templates that call a real (paid) API: what to install and which key to set. */
 const TEMPLATE_REQUIREMENTS: Partial<
   Record<TemplateName, { api: string; env: string; install: string }>
 > = {
@@ -275,7 +364,7 @@ program
   .command("new")
   .description(`Generate a runnable example file (${TEMPLATES.join(", ")})`)
   .argument("[template]", `template to generate (${TEMPLATES.join("|")})`, "simple")
-  .option("-o, --out <path>", "output file path", "agent-replay-example.mjs")
+  .option("-o, --out <path>", "output file path", "steplens-example.mjs")
   .option("-e, --endpoint <url>", "Studio API endpoint", DEFAULT_ENDPOINT)
   .option("-f, --force", "overwrite the output file if it exists", false)
   .action(async (template: string, options: { out: string; endpoint: string; force: boolean }) => {
@@ -284,8 +373,7 @@ program
       process.exit(1);
     }
 
-    const { readFileSync, writeFileSync, existsSync } = await import("node:fs");
-    const { resolve } = await import("node:path");
+    const { readFileSync, writeFileSync } = await import("node:fs");
     const { fileURLToPath } = await import("node:url");
 
     const outPath = resolve(process.cwd(), options.out);
@@ -316,7 +404,7 @@ program
       console.log(`   Set ${requirements.env} and run \`${requirements.install}\` before running it.`);
     }
     console.log("\nNext steps:");
-    console.log("  1. Start Studio:    pnpm dev    (or: agent-replay dev)");
+    console.log("  1. Start Studio:    npx steplens dev");
     console.log(`  2. Run the file:    node ${options.out}`);
     console.log(`  3. View the trace:  ${endpoint}`);
   });
@@ -329,19 +417,18 @@ program
   .option("-e, --endpoint <url>", "Studio API endpoint", DEFAULT_ENDPOINT)
   .option("--replace", "replace the trace if one with the same id already exists", false)
   .action(async (file: string, options: { endpoint: string; replace: boolean }) => {
-    const { readFileSync, existsSync } = await import("node:fs");
-    const { resolve } = await import("node:path");
-    const path = resolve(process.cwd(), file);
+    const { readFileSync } = await import("node:fs");
+    const filePath = resolve(process.cwd(), file);
 
-    if (!existsSync(path)) {
-      console.error(`Error: file not found: ${path}`);
+    if (!existsSync(filePath)) {
+      console.error(`Error: file not found: ${filePath}`);
       process.exit(1);
     }
 
     let body: string;
     try {
-      body = readFileSync(path, "utf-8");
-      JSON.parse(body); // validate it's JSON before sending
+      body = readFileSync(filePath, "utf-8");
+      JSON.parse(body);
     } catch (err: unknown) {
       console.error(`Error: invalid JSON in ${file}: ${(err as Error).message}`);
       process.exit(1);
@@ -372,6 +459,168 @@ program
       console.log(`Imported trace ${data.traceId ?? ""}. Open ${endpoint} to view it.`);
     } catch (err: unknown) {
       console.error(`Error: could not reach Studio at ${endpoint}. Is it running? (${(err as Error).message})`);
+      process.exit(1);
+    }
+  });
+
+// ── status ──────────────────────────────────────────────────────────────────
+program
+  .command("status")
+  .description("Check if a StepLens Studio instance is alive and show basic info")
+  .option("-e, --endpoint <url>", "Studio API endpoint", DEFAULT_ENDPOINT)
+  .action(async (options: { endpoint: string }) => {
+    const endpoint = options.endpoint.replace(/\/+$/, "");
+    try {
+      const res = await fetch(`${endpoint}/api/traces`, { signal: AbortSignal.timeout(5000) });
+      if (!res.ok) {
+        console.error(`Studio returned status ${res.status} at ${endpoint}`);
+        process.exit(1);
+      }
+      const data = (await res.json()) as unknown[];
+      console.log(`✓ Studio is alive at ${endpoint}`);
+      console.log(`  Traces: ${Array.isArray(data) ? data.length : "unknown"}`);
+    } catch (err: unknown) {
+      console.error(`✗ Studio not reachable at ${endpoint}: ${(err as Error).message}`);
+      process.exit(1);
+    }
+  });
+
+// ── open ────────────────────────────────────────────────────────────────────
+program
+  .command("open")
+  .description("Open the StepLens Studio UI in the default browser")
+  .option("-e, --endpoint <url>", "Studio API endpoint", DEFAULT_ENDPOINT)
+  .action(async (options: { endpoint: string }) => {
+    const endpoint = options.endpoint.replace(/\/+$/, "");
+    console.log(`Opening ${endpoint} ...`);
+    openBrowser(endpoint);
+  });
+
+// ── otel ────────────────────────────────────────────────────────────────────
+const otel = program
+  .command("otel")
+  .description("OpenTelemetry bridge — export and send traces as OTLP/HTTP JSON");
+
+otel
+  .command("export")
+  .description("Export a trace as OTLP JSON (from Studio or a local file)")
+  .argument("[traceId]", "ID of the trace to export from Studio")
+  .option("-e, --endpoint <url>", "Studio API endpoint", DEFAULT_ENDPOINT)
+  .option("--file <path>", "read trace from a local JSON file instead of Studio")
+  .option("-o, --out <path>", "output file for OTLP JSON", "trace-otlp.json")
+  .option("--include-content", "include prompts, responses, and tool payloads", false)
+  .action(async (traceId: string | undefined, options: { endpoint: string; file?: string; out: string; includeContent: boolean }) => {
+    const { readFileSync, writeFileSync } = await import("node:fs");
+    const { toOtlpTrace } = await import("@agent-replay/otel");
+
+    let traceExport: import("@agent-replay/core").TraceExport;
+
+    if (options.file) {
+      const filePath = resolve(process.cwd(), options.file);
+      if (!existsSync(filePath)) {
+        console.error(`Error: file not found: ${filePath}`);
+        process.exit(1);
+        return;
+      }
+      try {
+        traceExport = JSON.parse(readFileSync(filePath, "utf-8")) as import("@agent-replay/core").TraceExport;
+      } catch (err: unknown) {
+        console.error(`Error: invalid JSON in ${options.file}: ${(err as Error).message}`);
+        process.exit(1);
+        return;
+      }
+    } else if (traceId) {
+      const apiUrl = options.endpoint.replace(/\/+$/, "");
+      try {
+        const res = await fetch(`${apiUrl}/api/export/${traceId}`, { signal: AbortSignal.timeout(10000) });
+        if (!res.ok) {
+          console.error(res.status === 404 ? `Error: Trace "${traceId}" not found.` : `Error: API returned ${res.status}`);
+          process.exit(1);
+          return;
+        }
+        traceExport = (await res.json()) as import("@agent-replay/core").TraceExport;
+      } catch (err: unknown) {
+        console.error(`Error: could not reach Studio: ${(err as Error).message}`);
+        process.exit(1);
+        return;
+      }
+    } else {
+      console.error("Error: specify a <traceId> or --file <path>.");
+      process.exit(1);
+      return;
+    }
+
+    const otlp = toOtlpTrace(traceExport!, { includeContent: options.includeContent });
+    const outPath = resolve(process.cwd(), options.out);
+    writeFileSync(outPath, JSON.stringify(otlp, null, 2), "utf-8");
+    console.log(`OTLP trace written to ${outPath}`);
+  });
+
+otel
+  .command("send")
+  .description("Send a trace as OTLP to a collector endpoint")
+  .argument("[traceId]", "ID of the trace to send from Studio")
+  .option("-e, --endpoint <url>", "Studio API endpoint", DEFAULT_ENDPOINT)
+  .option("--file <path>", "read trace from a local JSON file instead of Studio")
+  .option("--otlp-endpoint <url>", "OTLP/HTTP endpoint to send traces to")
+  .option("--include-content", "include prompts, responses, and tool payloads", false)
+  .action(async (traceId: string | undefined, options: { endpoint: string; file?: string; otlpEndpoint?: string; includeContent: boolean }) => {
+    const { readFileSync } = await import("node:fs");
+    const { sendOtlpTrace, resolveOtlpEndpoint } = await import("@agent-replay/otel");
+
+    let traceExport: import("@agent-replay/core").TraceExport;
+
+    if (options.file) {
+      const filePath = resolve(process.cwd(), options.file);
+      if (!existsSync(filePath)) {
+        console.error(`Error: file not found: ${filePath}`);
+        process.exit(1);
+        return;
+      }
+      try {
+        traceExport = JSON.parse(readFileSync(filePath, "utf-8")) as import("@agent-replay/core").TraceExport;
+      } catch (err: unknown) {
+        console.error(`Error: invalid JSON in ${options.file}: ${(err as Error).message}`);
+        process.exit(1);
+        return;
+      }
+    } else if (traceId) {
+      const apiUrl = options.endpoint.replace(/\/+$/, "");
+      try {
+        const res = await fetch(`${apiUrl}/api/export/${traceId}`, { signal: AbortSignal.timeout(10000) });
+        if (!res.ok) {
+          console.error(res.status === 404 ? `Error: Trace "${traceId}" not found.` : `Error: API returned ${res.status}`);
+          process.exit(1);
+          return;
+        }
+        traceExport = (await res.json()) as import("@agent-replay/core").TraceExport;
+      } catch (err: unknown) {
+        console.error(`Error: could not reach Studio: ${(err as Error).message}`);
+        process.exit(1);
+        return;
+      }
+    } else {
+      console.error("Error: specify a <traceId> or --file <path>.");
+      process.exit(1);
+      return;
+    }
+
+    const otlpEndpoint = resolveOtlpEndpoint(options.otlpEndpoint);
+    console.log(`Sending OTLP trace to ${otlpEndpoint} ...`);
+
+    try {
+      const res = await sendOtlpTrace(traceExport!, {
+        includeContent: options.includeContent,
+        otlpEndpoint,
+      });
+      if (res.ok) {
+        console.log(`✓ Trace sent successfully (${res.status})`);
+      } else {
+        console.error(`✗ Collector returned ${res.status}: ${await res.text()}`);
+        process.exit(1);
+      }
+    } catch (err: unknown) {
+      console.error(`Error: could not reach OTLP endpoint: ${(err as Error).message}`);
       process.exit(1);
     }
   });

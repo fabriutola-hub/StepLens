@@ -1,7 +1,7 @@
-// Agent Replay — error-handling example. No API key required.
+// StepLens — error-handling example. No API key required.
 //
 // Run:
-//   1. Start Studio:   pnpm dev   (or: agent-replay dev)
+//   1. Start Studio:   npx steplens dev
 //   2. Run this file:  node __OUT__
 //   3. View the trace: __ENDPOINT__
 //

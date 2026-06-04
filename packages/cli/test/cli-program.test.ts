@@ -47,10 +47,10 @@ describe("agent-replay CLI", () => {
     }
   });
 
-  it("--version prints 0.3.0", async () => {
+  it("--version prints 0.4.0", async () => {
     const { code, stdout } = await runCli(["--version"]);
     expect(code).toBe(0);
-    expect(stdout.trim()).toBe("0.3.0");
+    expect(stdout.trim()).toBe("0.4.0");
   });
 
   it("doctor runs and reports a system check", async () => {
@@ -136,11 +136,11 @@ describe("agent-replay new", () => {
       const { code, stdout } = await runCli(["new", "simple"], { cwd: dir });
       expect(code).toBe(0);
       expect(stdout).toContain("Created");
-      const file = join(dir, "agent-replay-example.mjs");
+      const file = join(dir, "steplens-example.mjs");
       expect(existsSync(file)).toBe(true);
       const content = readFileSync(file, "utf-8");
       expect(content).toContain('@agent-replay/sdk/simple');
-      expect(content).toContain("node agent-replay-example.mjs");
+      expect(content).toContain("node steplens-example.mjs");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -188,7 +188,7 @@ describe("agent-replay new", () => {
         const content = readFileSync(join(dir, "ex.mjs"), "utf-8");
         expect(content).toContain("http://localhost:3001");
         expect(content).toContain("node ex.mjs");
-        expect(content).toContain("pnpm dev");
+        expect(content).toContain("npx steplens dev");
         expect(content).toContain("@agent-replay/sdk/simple");
         if (template === "openai") {
           expect(content).toContain("wrapOpenAI");
@@ -277,7 +277,7 @@ describe("agent-replay new", () => {
 
       const forced = await runCli(["new", "google", "--force"], { cwd: dir });
       expect(forced.code).toBe(0);
-      const content = readFileSync(join(dir, "agent-replay-example.mjs"), "utf-8");
+      const content = readFileSync(join(dir, "steplens-example.mjs"), "utf-8");
       expect(content).toContain("wrapGoogleGenAI");
     } finally {
       rmSync(dir, { recursive: true, force: true });

@@ -1,12 +1,13 @@
 {
   "name": "steplens",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "license": "MIT",
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",
     "demo": "node packages/cli/dist/index.js demo",
+    "steplens": "node packages/cli/dist/index.js",
     "agent-replay": "node packages/cli/dist/index.js",
     "test": "turbo run test",
     "lint": "turbo run lint",

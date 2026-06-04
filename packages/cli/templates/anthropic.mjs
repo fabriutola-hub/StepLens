@@ -1,11 +1,11 @@
-// Agent Replay — Anthropic example.
+// StepLens — Anthropic example.
 //
 // ⚠️  This calls the REAL Anthropic API and may cost money.
 //
 // Setup:
 //   1. npm i @anthropic-ai/sdk
 //   2. export ANTHROPIC_API_KEY=sk-ant-...   (PowerShell: $env:ANTHROPIC_API_KEY="sk-ant-...")
-//   3. Start Studio:   pnpm dev   (or: agent-replay dev)
+//   3. Start Studio:   npx steplens dev
 //   4. Run this file:  node __OUT__
 //   5. View the trace: __ENDPOINT__
 

@@ -1,11 +1,11 @@
-// Agent Replay — Google Gemini example.
+// StepLens — Google Gemini example.
 //
 // ⚠️  This calls the REAL Google Gemini API and may cost money.
 //
 // Setup:
 //   1. npm i @google/genai
 //   2. export GEMINI_API_KEY=...   (PowerShell: $env:GEMINI_API_KEY="...")
-//   3. Start Studio:   pnpm dev   (or: agent-replay dev)
+//   3. Start Studio:   npx steplens dev
 //   4. Run this file:  node __OUT__
 //   5. View the trace: __ENDPOINT__
 

@@ -1,11 +1,11 @@
-// Agent Replay — Vercel AI SDK example.
+// StepLens — Vercel AI SDK example.
 //
 // ⚠️  This calls the REAL OpenAI API (via the Vercel AI SDK) and may cost money.
 //
 // Setup:
 //   1. npm i ai @ai-sdk/openai
 //   2. export OPENAI_API_KEY=sk-...   (PowerShell: $env:OPENAI_API_KEY="sk-...")
-//   3. Start Studio:   pnpm dev   (or: agent-replay dev)
+//   3. Start Studio:   npx steplens dev
 //   4. Run this file:  node __OUT__
 //   5. View the trace: __ENDPOINT__
 

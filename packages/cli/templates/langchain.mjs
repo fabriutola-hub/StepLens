@@ -1,11 +1,11 @@
-// Agent Replay — LangChain example.
+// StepLens — LangChain example.
 //
 // ⚠️  This calls the REAL OpenAI API (via LangChain) and may cost money.
 //
 // Setup:
 //   1. npm i @langchain/openai @langchain/core
 //   2. export OPENAI_API_KEY=sk-...   (PowerShell: $env:OPENAI_API_KEY="sk-...")
-//   3. Start Studio:   pnpm dev   (or: agent-replay dev)
+//   3. Start Studio:   npx steplens dev
 //   4. Run this file:  node __OUT__
 //   5. View the trace: __ENDPOINT__
 

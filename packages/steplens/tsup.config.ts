@@ -11,14 +11,14 @@ export default defineConfig({
   banner: {
     js: "#!/usr/bin/env node",
   },
-  // @agent-replay/examples is bundled (it stays private) so the published CLI's
-  // `demo` command is self-contained. core/sdk are real deps; better-sqlite3 is
-  // a native module and must stay external.
+  // The steplens wrapper delegates entirely to @agent-replay/cli;
+  // both CLI and its transitive deps stay external.
   external: [
+    "@agent-replay/cli",
     "@agent-replay/core",
-    "@agent-replay/otel",
     "@agent-replay/sdk",
+    "@agent-replay/otel",
+    "@agent-replay/studio",
     "better-sqlite3",
   ],
-  noExternal: ["@agent-replay/examples"],
 });

@@ -1,8 +1,8 @@
-// Agent Replay — Ollama example. No API key required (runs locally).
+// StepLens — Ollama example. No API key required (runs locally).
 //
 // Setup:
 //   1. Install Ollama (https://ollama.com) and pull a model: `ollama pull llama3.2`
-//   2. Start Studio:   pnpm dev   (or: agent-replay dev)
+//   2. Start Studio:   npx steplens dev
 //   3. Run this file:  node __OUT__
 //   4. View the trace: __ENDPOINT__
 //

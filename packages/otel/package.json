@@ -1,12 +1,12 @@
 {
-  "name": "@agent-replay/core",
+  "name": "@agent-replay/otel",
   "version": "0.4.0",
-  "description": "Shared types, Zod schemas, and cost utilities for StepLens.",
+  "description": "OpenTelemetry bridge for StepLens — convert and export traces to OTLP/HTTP JSON.",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/fabriutola-hub/StepLens.git",
-    "directory": "packages/core"
+    "directory": "packages/otel"
   },
   "type": "module",
   "main": "./dist/index.js",
@@ -30,7 +30,7 @@
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {
-    "zod": "^3.24.0"
+    "@agent-replay/core": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^25.9.1",
