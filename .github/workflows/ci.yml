@@ -9,6 +9,9 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# pnpm 11.5.1 (pinned in `package.json#packageManager`) requires Node ≥ 22.13.
+# We test on the two LTS lines we actively support: 22 (Active LTS) and 24
+# (Current / Next LTS). Node 20 EOL'd April 2025 and is no longer tested.
 jobs:
   build:
     name: typecheck · test · build (Node ${{ matrix.node }})
@@ -16,12 +19,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: [20, 22]
+        node: [22, 24]
     steps:
       - uses: actions/checkout@v4
 
-      - name: Enable Corepack (pnpm)
-        run: corepack enable
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.5.1
 
       - uses: actions/setup-node@v4
         with:
