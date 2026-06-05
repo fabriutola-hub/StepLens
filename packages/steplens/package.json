@@ -19,7 +19,6 @@
   },
   "scripts": {
     "build": "tsup",
-    "prepack": "node scripts/build-studio-standalone.mjs && pnpm build && node scripts/copy-studio.mjs",
     "dev": "tsup --watch",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "clean": "rm -rf dist .turbo"

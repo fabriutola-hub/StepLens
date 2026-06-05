@@ -8,7 +8,8 @@
     "url": "https://github.com/fabriutola-hub/StepLens.git",
     "directory": "apps/studio"
   },
-  "files": [".next", "!.next/cache", "public", "next.config.ts", "postcss.config.mjs", "tsconfig.json"],
+  "files": [".next/standalone", ".next/static", "public", "next.config.ts", "postcss.config.mjs", "tsconfig.json"],
+  "main": ".next/standalone/apps/studio/server.js",
   "publishConfig": {
     "access": "public"
   },
