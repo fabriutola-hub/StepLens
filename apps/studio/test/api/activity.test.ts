@@ -39,8 +39,13 @@ describe("GET /api/activity", () => {
   });
 
   it("counts a trace on its day", async () => {
-    const today = Math.floor(Date.now() / 86_400_000) * 86_400_000;
-    await ingestAt("heat-1", today + 12 * 3600 * 1000);
+    // Use `Date.now()` directly rather than `today + 12h` — the latter
+    // races with the test runner if the test fires within minutes of UTC
+    // midnight (the inserted trace ends up "tomorrow" relative to the
+    // route's `to = Date.now()` snapshot, and the WHERE filter drops it).
+    const startedAt = Date.now();
+    const today = Math.floor(startedAt / 86_400_000) * 86_400_000;
+    await ingestAt("heat-1", startedAt);
 
     const res = await activityGET(new NextRequest("http://localhost:3000/api/activity"));
     const body = await res.json();
