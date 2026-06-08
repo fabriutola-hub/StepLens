@@ -36,7 +36,7 @@
   "devDependencies": {
     "@agent-replay/examples": "workspace:*",
     "@types/better-sqlite3": "^7.6.13",
-    "@types/node": "^25.9.1",
+    "@types/node": "^25.9.2",
     "tsup": "^8.4.0",
     "typescript": "^5.7.0",
     "vitest": "^3.1.1"
