@@ -16,8 +16,8 @@
   },
   "devDependencies": {
     "@agent-replay/sdk": "workspace:*",
-    "turbo": "^2.5.0",
-    "typescript": "^5.7.0"
+    "turbo": "^2.9.18",
+    "typescript": "^6.0.3"
   },
   "engines": {
     "node": ">=22.13"
